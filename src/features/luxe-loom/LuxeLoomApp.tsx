@@ -4,6 +4,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { 
   ShoppingBag, 
   Search, 
@@ -15,8 +16,8 @@ import {
   Star, 
   ArrowRight,
   ArrowLeft,
-  Settings,
   LayoutDashboard,
+  LogOut,
   Package,
   Check,
   AlertTriangle,
@@ -34,7 +35,7 @@ import { Product, CartItem, Category, Language, SellerInformation } from './type
 import { DEFAULT_SELLER_INFORMATION, FALLBACK_PRODUCT_IMAGE, INITIAL_PRODUCTS } from './constants';
 import { TRANSLATIONS } from './translations';
 
-export default function App() {
+export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [language, setLanguage] = useState<Language>('en');
 
   const t = TRANSLATIONS[language];
@@ -43,7 +44,7 @@ export default function App() {
   
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const [activeTab, setActiveTab] = useState<'store' | 'admin'>('store');
+  const activeTab: 'store' | 'admin' = adminMode ? 'admin' : 'store';
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -335,6 +336,11 @@ export default function App() {
     }
   };
 
+  const handleAdminLogout = async () => {
+    await fetch('/api/admin-auth', { method: 'DELETE' });
+    window.location.href = '/admin';
+  };
+
   return (
     <div className="min-h-screen font-sans">
       {/* Navigation */}
@@ -342,44 +348,42 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <div className="flex items-center gap-8">
-              <button 
+              {!adminMode && <button
                 onClick={() => {
-                  setActiveTab('store');
                   document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
                 }}
                 className="lg:hidden p-2 hover:bg-stone-100 rounded-full transition-colors"
               >
                 <Menu className="w-6 h-6" />
-              </button>
-              <h1 
+              </button>}
+              <h1
                 onClick={() => {
-                  setActiveTab('store');
                   setSelectedProductId(null);
                 }}
-                className="text-2xl font-serif font-bold tracking-tighter cursor-pointer hover:text-gold-600 transition-colors"
+                className={`text-2xl font-serif font-bold tracking-tighter ${adminMode ? '' : 'cursor-pointer hover:text-gold-600 transition-colors'}`}
               >
                 Luxe & Loom
               </h1>
-              <div className="hidden lg:flex items-center gap-6 text-sm font-medium tracking-wide text-stone-600">
+              {!adminMode && <div className="hidden lg:flex items-center gap-6 text-sm font-medium tracking-wide text-stone-600">
                 <button 
-                  onClick={() => { setSelectedCategory('All'); setActiveTab('store'); setSelectedProductId(null); }}
+                  onClick={() => { setSelectedCategory('All'); setSelectedProductId(null); }}
                   className={`hover:text-stone-900 transition-colors ${selectedCategory === 'All' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
                 >
                   {t.nav.collections}
                 </button>
                 <button 
-                  onClick={() => { setSelectedCategory('Perfume'); setActiveTab('store'); setSelectedProductId(null); }}
+                  onClick={() => { setSelectedCategory('Perfume'); setSelectedProductId(null); }}
                   className={`hover:text-stone-900 transition-colors ${selectedCategory === 'Perfume' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
                 >
                   {t.nav.perfumes}
                 </button>
                 <button 
-                  onClick={() => { setSelectedCategory('Clothing'); setActiveTab('store'); setSelectedProductId(null); }}
+                  onClick={() => { setSelectedCategory('Clothing'); setSelectedProductId(null); }}
                   className={`hover:text-stone-900 transition-colors ${selectedCategory === 'Clothing' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
                 >
                   {t.nav.clothing}
                 </button>
-              </div>
+              </div>}
             </div>
 
             <div className="flex items-center gap-4">
@@ -394,7 +398,7 @@ export default function App() {
                   <option value="ar">AR</option>
                 </select>
               </div>
-              <div className="hidden md:flex items-center bg-stone-100 rounded-full px-4 py-2">
+              {!adminMode && <div className="hidden md:flex items-center bg-stone-100 rounded-full px-4 py-2">
                 <Search className="w-4 h-4 text-stone-400" />
                 <input 
                   type="text" 
@@ -403,8 +407,8 @@ export default function App() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
-              </div>
-              <button 
+              </div>}
+              {!adminMode && <button
                 onClick={() => setIsCartOpen(true)}
                 className="relative p-2 hover:bg-stone-100 rounded-full transition-colors"
               >
@@ -414,17 +418,17 @@ export default function App() {
                     {cart.reduce((a, b) => a + b.quantity, 0)}
                   </span>
                 )}
-              </button>
-              <button 
-                onClick={() => {
-                  setActiveTab(activeTab === 'store' ? 'admin' : 'store');
-                  setSelectedProductId(null);
-                }}
-                className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-600"
-                title={activeTab === 'store' ? t.nav.admin : t.nav.store}
-              >
-                {activeTab === 'store' ? <Settings className="w-6 h-6" /> : <LayoutDashboard className="w-6 h-6" />}
-              </button>
+              </button>}
+              {adminMode && (
+                <>
+                  <Link href="/" className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-600" title={t.nav.store}>
+                    <LayoutDashboard className="w-6 h-6" />
+                  </Link>
+                  <button onClick={handleAdminLogout} className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-600" title="Log out">
+                    <LogOut className="w-6 h-6" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1380,7 +1384,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="bg-stone-900 text-white py-24">
+      {!adminMode && <footer className="bg-stone-900 text-white py-24">
         <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="col-span-1 md:col-span-2">
             <h2 className="text-3xl font-serif font-bold mb-6 tracking-tighter">Luxe & Loom</h2>
@@ -1422,7 +1426,7 @@ export default function App() {
             <span className="hover:text-white cursor-pointer">{t.footer.terms}</span>
           </div>
         </div>
-      </footer>
+      </footer>}
     </div>
   );
 }
