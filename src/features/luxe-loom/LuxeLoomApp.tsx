@@ -356,14 +356,20 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               >
                 <Menu className="w-6 h-6" />
               </button>}
-              <h1
+              <button
+                type="button"
+                aria-label="Luxe & Loom home"
                 onClick={() => {
                   setSelectedProductId(null);
                 }}
-                className={`text-2xl font-serif font-bold tracking-tighter ${adminMode ? '' : 'cursor-pointer hover:text-gold-600 transition-colors'}`}
+                className={`shrink-0 ${adminMode ? '' : 'cursor-pointer'}`}
               >
-                Luxe & Loom
-              </h1>
+                <img
+                  src="/logo.png"
+                  alt="Luxe & Loom"
+                  className="h-14 w-14 rounded-full object-cover shadow-sm"
+                />
+              </button>
               {!adminMode && <div className="hidden lg:flex items-center gap-6 text-sm font-medium tracking-wide text-stone-600">
                 <button 
                   onClick={() => { setSelectedCategory('All'); setSelectedProductId(null); }}
@@ -1387,7 +1393,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       {!adminMode && <footer className="bg-stone-900 text-white py-24">
         <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-12">
           <div className="col-span-1 md:col-span-2">
-            <h2 className="text-3xl font-serif font-bold mb-6 tracking-tighter">Luxe & Loom</h2>
+            <img
+              src="/logo.png"
+              alt="Luxe & Loom — Parfum & Clothes"
+              className="w-44 rounded-2xl mb-6"
+            />
             <p className="text-stone-400 max-w-sm mb-8 leading-relaxed">
               {t.footer.desc}
             </p>

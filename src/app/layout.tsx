@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Luxe & Loom",
   description: "Luxury fragrance and fashion storefront.",
+  icons: { icon: "/logo.png" },
 };
 
 export default function RootLayout({
