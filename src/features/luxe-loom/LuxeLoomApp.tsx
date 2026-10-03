@@ -34,8 +34,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Product, CartItem, Category, Language, SellerInformation } from './types';
 import { DEFAULT_SELLER_INFORMATION, FALLBACK_PRODUCT_IMAGE, INITIAL_PRODUCTS } from './constants';
 import { TRANSLATIONS } from './translations';
+import Fragranea from './Fragranea';
 
-export default function App({ adminMode = false }: { adminMode?: boolean }) {
+export default function App({ adminMode = false, informationMode = false }: { adminMode?: boolean; informationMode?: boolean }) {
   const [language, setLanguage] = useState<Language>('en');
 
   const t = TRANSLATIONS[language];
@@ -48,6 +49,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [pendingSection, setPendingSection] = useState<string | null>(null);
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [adminCategory, setAdminCategory] = useState<Category | 'All'>('All');
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -67,6 +70,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
   // The imported app persists storefront state locally; restore it after hydration.
   useEffect(() => {
+    const category = new URLSearchParams(window.location.search).get('category');
+    if (category === 'Perfume' || category === 'Clothing') setSelectedCategory(category);
     const savedLanguage = localStorage.getItem('luxe_loom_lang') as Language | null;
     const savedProducts = localStorage.getItem('luxe_loom_products');
     const savedSellerInformation = localStorage.getItem('luxe_loom_seller_information');
@@ -106,9 +111,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
   useEffect(() => {
     localStorage.setItem('luxe_loom_lang', language);
-    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
-    document.documentElement.lang = language;
-  }, [language]);
+    document.documentElement.dir = !informationMode && language === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = informationMode ? 'fr' : language;
+  }, [language, informationMode]);
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -336,6 +341,23 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     }
   };
 
+  useEffect(() => {
+    if (!pendingSection || selectedProductId) return;
+    document.getElementById(pendingSection)?.scrollIntoView({ behavior: 'smooth' });
+    setPendingSection(null);
+  }, [pendingSection, selectedProductId]);
+
+  const browseSection = (section: string, category?: Category | 'All') => {
+    setIsMobileMenuOpen(false);
+    setSelectedProductId(null);
+    if (category) { setSelectedCategory(category); setSearchQuery(''); }
+    if (informationMode) {
+      window.location.href = `/${category ? `?category=${category}` : ''}#${section}`;
+    } else {
+      setPendingSection(section);
+    }
+  };
+
   const handleAdminLogout = async () => {
     await fetch('/api/admin-auth', { method: 'DELETE' });
     window.location.href = '/admin';
@@ -349,9 +371,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           <div className="flex justify-between items-center h-20">
             <div className="flex items-center gap-8">
               {!adminMode && <button
-                onClick={() => {
-                  document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
-                }}
+                onClick={() => setIsMobileMenuOpen(true)}
+                aria-label={language === 'fr' ? 'Ouvrir le menu' : 'Open menu'}
                 className="lg:hidden p-2 hover:bg-stone-100 rounded-full transition-colors"
               >
                 <Menu className="w-6 h-6" />
@@ -360,7 +381,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 type="button"
                 aria-label="Luxe & Loom home"
                 onClick={() => {
-                  setSelectedProductId(null);
+                  if (informationMode) window.location.href = '/';
+                  else { setSelectedProductId(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }
                 }}
                 className={`shrink-0 ${adminMode ? '' : 'cursor-pointer'}`}
               >
@@ -372,23 +394,24 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               </button>
               {!adminMode && <div className="hidden lg:flex items-center gap-6 text-sm font-medium tracking-wide text-stone-600">
                 <button 
-                  onClick={() => { setSelectedCategory('All'); setSelectedProductId(null); }}
-                  className={`hover:text-stone-900 transition-colors ${selectedCategory === 'All' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
+                  onClick={() => browseSection('products', 'All')}
+                  className={`hover:text-stone-900 transition-colors ${!informationMode && selectedCategory === 'All' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
                 >
                   {t.nav.collections}
                 </button>
                 <button 
-                  onClick={() => { setSelectedCategory('Perfume'); setSelectedProductId(null); }}
-                  className={`hover:text-stone-900 transition-colors ${selectedCategory === 'Perfume' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
+                  onClick={() => browseSection('products', 'Perfume')}
+                  className={`hover:text-stone-900 transition-colors ${!informationMode && selectedCategory === 'Perfume' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
                 >
                   {t.nav.perfumes}
                 </button>
                 <button 
-                  onClick={() => { setSelectedCategory('Clothing'); setSelectedProductId(null); }}
-                  className={`hover:text-stone-900 transition-colors ${selectedCategory === 'Clothing' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
+                  onClick={() => browseSection('products', 'Clothing')}
+                  className={`hover:text-stone-900 transition-colors ${!informationMode && selectedCategory === 'Clothing' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
                 >
                   {t.nav.clothing}
                 </button>
+                <button onClick={() => browseSection('guide-parfum')} className="hover:text-gold-600 transition-colors">{language === 'fr' ? "L’art du parfum" : language === 'ar' ? 'فن العطور' : 'The art of perfume'}</button>
               </div>}
             </div>
 
@@ -404,7 +427,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   <option value="ar">AR</option>
                 </select>
               </div>
-              {!adminMode && <div className="hidden md:flex items-center bg-stone-100 rounded-full px-4 py-2">
+              {!adminMode && !informationMode && <div className="hidden md:flex items-center bg-stone-100 rounded-full px-4 py-2">
                 <Search className="w-4 h-4 text-stone-400" />
                 <input 
                   type="text" 
@@ -440,9 +463,18 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         </div>
       </nav>
 
+      {!adminMode && isMobileMenuOpen && <div className="fixed inset-0 z-[60] bg-stone-900/40" onClick={() => setIsMobileMenuOpen(false)}>
+        <nav aria-label="Menu mobile" className="bg-gold-50 w-72 max-w-full h-full p-6 space-y-6" onClick={event => event.stopPropagation()}>
+          <button aria-label="Fermer le menu" onClick={() => setIsMobileMenuOpen(false)} className="block ml-auto"><X /></button>
+          <Link href="/" className="block font-serif text-xl">Luxe & Loom</Link>
+          {(['All', 'Perfume', 'Clothing'] as const).map(category => <button key={category} className="block" onClick={() => browseSection('products', category)}>{category === 'All' ? t.nav.collections : category === 'Perfume' ? t.nav.perfumes : t.nav.clothing}</button>)}
+          <button onClick={() => browseSection('guide-parfum')} className="block text-gold-700">L’art du parfum</button>
+        </nav>
+      </div>}
+
       {/* Main Content */}
       <main className="pt-20">
-        {activeTab === 'store' ? (
+        {informationMode ? <Fragranea /> : activeTab === 'store' ? (
           selectedProduct ? (
             <section className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
               <button
@@ -580,7 +612,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           ) : (
             <>
             {/* Hero Section */}
-            <section className="relative h-[80vh] overflow-hidden">
+            <section className="relative h-[65vh] min-h-[420px] max-h-[680px] overflow-hidden">
               <div className="absolute inset-0">
                 <img 
                   src="https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&q=80&w=2000" 
@@ -713,6 +745,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 </div>
               )}
             </section>
+            <Fragranea embedded />
             </>
           )
         ) : (
@@ -1416,7 +1449,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <li className="hover:text-white transition-colors cursor-pointer">{t.nav.collections}</li>
               <li className="hover:text-white transition-colors cursor-pointer">{t.nav.perfumes}</li>
               <li className="hover:text-white transition-colors cursor-pointer">{t.nav.clothing}</li>
-              <li className="hover:text-white transition-colors cursor-pointer">Accessories</li>
+              <li><button onClick={() => browseSection('guide-parfum')} className="hover:text-white transition-colors">L’art du parfum</button></li>
             </ul>
           </div>
           <div>
