@@ -9,12 +9,16 @@ export interface Product {
   category: Category;
   image: string;
   stock: number;
+  sku?: string;
+  brand?: string;
+  updatedAt?: string;
   secondaryImage?: string;
   fragranceFamily?: string;
   size?: string;
   details?: {
     notes?: string[];
     scentFamily?: string;
+    concentration?: string;
     topNotes?: string[];
     heartNotes?: string[];
     baseNotes?: string[];

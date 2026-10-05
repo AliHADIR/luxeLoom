@@ -54,6 +54,9 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pendingSection, setPendingSection] = useState<string | null>(null);
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [adminStock, setAdminStock] = useState('all');
+  const [adminSort, setAdminSort] = useState('name');
+  const [adminNotice, setAdminNotice] = useState('');
   const [adminCategory, setAdminCategory] = useState<Category | 'All'>('All');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [showCheckoutDetails, setShowCheckoutDetails] = useState(false);
@@ -156,10 +159,11 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   const adminProducts = useMemo(() => {
     return products.filter(product => {
       const matchesCategory = adminCategory === 'All' || product.category === adminCategory;
-      const matchesSearch = `${product.name} ${product.description}`.toLowerCase().includes(adminSearchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, adminCategory, adminSearchQuery]);
+      const matchesSearch = `${product.name} ${product.description} ${product.sku || ''} ${product.brand || ''}`.toLowerCase().includes(adminSearchQuery.toLowerCase());
+      const matchesStock = adminStock === 'all' || (adminStock === 'out' ? product.stock === 0 : adminStock === 'low' ? product.stock > 0 && product.stock <= 5 : product.stock > 5);
+      return matchesCategory && matchesSearch && matchesStock;
+    }).sort((a, b) => adminSort === 'stock' ? a.stock - b.stock : adminSort === 'value' ? b.price * b.stock - a.price * a.stock : a.name.localeCompare(b.name));
+  }, [products, adminCategory, adminSearchQuery, adminStock, adminSort]);
 
   const inventoryStats = useMemo(() => {
     const totalStock = products.reduce((sum, product) => sum + product.stock, 0);
@@ -235,6 +239,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   const buildProductDetails = (formData: FormData, category: Category): Product['details'] => {
     if (category === 'Perfume') {
       return {
+        notes: splitList(formData.get('notes')),
+        concentration: String(formData.get('concentration') || '').trim() || undefined,
         scentFamily: formData.get('scentFamily') as string || undefined,
         topNotes: splitList(formData.get('topNotes')),
         heartNotes: splitList(formData.get('heartNotes')),
@@ -298,6 +304,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       rib: formData.get('rib') as string,
       iban: formData.get('iban') as string,
     });
+    setAdminNotice(words(language, 'Seller details saved.', 'Coordonnées enregistrées.', 'تم حفظ بيانات البائع.'));
   };
 
   const handleAddProduct = (e: React.FormEvent<HTMLFormElement>) => {
@@ -312,11 +319,15 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       category,
       image: formData.get('image') as string || FALLBACK_PRODUCT_IMAGE,
       stock: Number(formData.get('stock')),
+      sku: String(formData.get('sku') || '').trim() || undefined,
+      brand: String(formData.get('brand') || '').trim() || undefined,
+      updatedAt: new Date().toISOString(),
       secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       details: buildProductDetails(formData, category),
     };
     setProducts(prev => [newProduct, ...prev]);
     setShowAddModal(false);
+    setAdminNotice(words(language, 'Product added.', 'Produit ajouté.', 'تمت إضافة المنتج.'));
   };
 
   const handleUpdateProduct = (e: React.FormEvent<HTMLFormElement>) => {
@@ -332,11 +343,15 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       category,
       image: formData.get('image') as string || FALLBACK_PRODUCT_IMAGE,
       stock: Number(formData.get('stock')),
+      sku: String(formData.get('sku') || '').trim() || undefined,
+      brand: String(formData.get('brand') || '').trim() || undefined,
+      updatedAt: new Date().toISOString(),
       secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       details: buildProductDetails(formData, category),
     };
     setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
     setEditingProduct(null);
+    setAdminNotice(words(language, 'Product updated.', 'Produit mis à jour.', 'تم تحديث المنتج.'));
   };
 
   const deleteProduct = (id: string) => {
@@ -776,6 +791,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
               </button>
             </div>
 
+            <p className="text-sm text-stone-500 mb-5">{words(language, 'Changes are saved in this browser. They are not shared with other devices or website visitors.', 'Les modifications sont enregistrées dans ce navigateur. Elles ne sont pas partagées avec les autres appareils ou visiteurs.', 'تُحفظ التغييرات في هذا المتصفح ولا تتم مشاركتها مع الأجهزة الأخرى أو زوار الموقع.')}</p>
+            {adminNotice && <p role="status" className="rounded-lg bg-emerald-50 text-emerald-800 p-4 mb-5">{adminNotice}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               {[
                 { label: t.admin.stats.products, value: inventoryStats.totalProducts, icon: Package, tone: 'text-stone-700 bg-stone-100' },
@@ -899,6 +916,11 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                   ))}
                 </div>
               </div>
+              <div className="px-5 py-4 border-b border-stone-200 flex flex-wrap gap-5 items-end">
+                <label className="text-xs text-stone-500">{words(language, 'Stock status', 'État du stock', 'حالة المخزون')}<select value={adminStock} onChange={e => setAdminStock(e.target.value)} className="block mt-2 border border-stone-200 rounded-lg p-2 text-sm"><option value="all">{t.store.all}</option><option value="available">{t.product.inStock} (&gt; 5)</option><option value="low">{t.admin.lowStock} (1–5)</option><option value="out">{t.product.outOfStock}</option></select></label>
+                <label className="text-xs text-stone-500">{words(language, 'Sort by', 'Trier par', 'ترتيب حسب')}<select value={adminSort} onChange={e => setAdminSort(e.target.value)} className="block mt-2 border border-stone-200 rounded-lg p-2 text-sm"><option value="name">{t.admin.table.product}</option><option value="stock">{words(language, 'Lowest stock first', 'Stock croissant', 'المخزون الأقل أولاً')}</option><option value="value">{words(language, 'Highest inventory value', 'Valeur de stock décroissante', 'أعلى قيمة مخزون')}</option></select></label>
+                <span className="text-sm text-stone-500" role="status">{adminProducts.length} / {products.length} {t.admin.stats.products}</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-stone-50 border-b border-stone-200">
@@ -907,6 +929,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                       <th className="px-6 py-4 text-xs font-bold tracking-widest text-stone-400 uppercase">{t.admin.table.category}</th>
                       <th className="px-6 py-4 text-xs font-bold tracking-widest text-stone-400 uppercase">{t.admin.table.price}</th>
                       <th className="px-6 py-4 text-xs font-bold tracking-widest text-stone-400 uppercase">{t.admin.table.stock}</th>
+                      <th className="px-6 py-4 text-xs font-bold tracking-widest text-stone-400 uppercase">{words(language, 'Product details', 'Détails du produit', 'تفاصيل المنتج')}</th>
+                      <th className="px-6 py-4 text-xs font-bold tracking-widest text-stone-400 uppercase">{words(language, 'Stock value', 'Valeur du stock', 'قيمة المخزون')}</th>
                       <th className="px-6 py-4 text-xs font-bold tracking-widest text-stone-400 uppercase text-right">{t.admin.table.actions}</th>
                     </tr>
                   </thead>
@@ -918,6 +942,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                             <img src={resolveProductImage(product.image)} alt={product.name} className="w-12 h-12 rounded-lg object-cover" referrerPolicy="no-referrer" onError={handleImageFallback} />
                             <div>
                               <div className="font-bold text-stone-900">{product.name}</div>
+                              {product.sku && <div className="text-xs font-mono text-gold-700 mt-1">SKU: {product.sku}</div>}
+                              {product.brand && <div className="text-xs text-stone-500 mt-1">{product.brand}</div>}
                               <div className="text-xs text-stone-500 truncate max-w-[200px]">{product.description}</div>
                             </div>
                           </div>
@@ -936,21 +962,25 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                             {product.stock} {t.admin.table.units}
                             {product.stock <= 5 && (
                               <span className="ml-2 px-2 py-1 rounded-full bg-red-50 text-[10px] font-bold uppercase tracking-wider text-red-700">
-                                {t.admin.lowStock}
+                                {product.stock === 0 ? t.product.outOfStock : t.admin.lowStock}
                               </span>
                             )}
                           </div>
                         </td>
+                        <td className="px-6 py-4 text-xs text-stone-500 min-w-44"><p>{[product.details?.scentFamily, product.details?.concentration, product.details?.volume, product.details?.size, product.details?.color].filter(Boolean).join(' · ') || '—'}</p>{product.details?.delivery && <p className="mt-2">{product.details.delivery}</p>}{product.updatedAt && <p className="mt-2">{words(language, 'Updated', 'Mis à jour', 'آخر تحديث')}: {new Date(product.updatedAt).toLocaleDateString(language === 'ar' ? 'ar-MA' : language === 'fr' ? 'fr-MA' : 'en-GB')}</p>}</td>
+                        <td className="px-6 py-4 text-sm whitespace-nowrap">{(product.price * product.stock).toLocaleString()} {t.currency}</td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-2">
                             <button 
                               onClick={() => setEditingProduct(product)}
+                              aria-label={`${t.admin.modal.editTitle}: ${product.name}`}
                               className="p-2 hover:bg-stone-100 rounded-lg text-stone-600 transition-colors"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button 
                               onClick={() => deleteProduct(product.id)}
+                              aria-label={`${words(language, 'Delete', 'Supprimer', 'حذف')}: ${product.name}`}
                               className="p-2 hover:bg-red-50 rounded-lg text-red-500 transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1283,6 +1313,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                       <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{t.admin.modal.price}</label>
                       <input 
                         name="price" 
+                        min="0" step="0.01"
                         type="number" 
                         required 
                         defaultValue={editingProduct?.price}
@@ -1293,6 +1324,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                       <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{t.admin.modal.stock}</label>
                       <input 
                         name="stock" 
+                        min="0" step="1"
                         type="number" 
                         required 
                         defaultValue={editingProduct?.stock}
@@ -1324,6 +1356,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                         placeholder="https://..."
                       />
                     </div>
+                    {(['sku', 'brand'] as const).map(field => <label key={field} className="text-xs text-stone-500">{field === 'sku' ? 'SKU' : words(language, 'Brand / maker', 'Marque / créateur', 'العلامة / المصمم')}<input name={field} defaultValue={editingProduct?.[field]} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>)}
                     <label className="col-span-2 text-xs text-stone-500">{words(language, 'Second product image URL', 'URL de la seconde image', 'رابط الصورة الثانية')}<input name="secondaryImage" type="url" defaultValue={editingProduct?.secondaryImage} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>
                     <div className="col-span-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
                       <div className="flex items-center gap-4">
@@ -1357,6 +1390,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                           />
                         </div>
                         <div>
+                          <label className="block text-xs text-stone-500 mb-4">{words(language, 'Concentration', 'Concentration', 'التركيز')}<input name="concentration" defaultValue={editingProduct?.details?.concentration} placeholder="Eau de parfum" className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>
+                          <label className="block text-xs text-stone-500 mb-4">{words(language, 'Scent notes (comma separated)', 'Notes olfactives (séparées par des virgules)', 'النغمات العطرية (مفصولة بفواصل)')}<input name="notes" defaultValue={editingProduct?.details?.notes?.join(', ')} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>
                           <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{t.admin.modal.scentFamily}</label>
                           <input
                             name="scentFamily"
