@@ -12,7 +12,11 @@ import {
   X, 
   Plus, 
   Trash2, 
-  Edit2, 
+  Edit2,
+  Copy,
+  Download,
+  Minus,
+  RotateCcw,
   Star, 
   ArrowRight,
   ArrowLeft,
@@ -35,6 +39,7 @@ import { Product, CartItem, Category, Language, SellerInformation } from './type
 import { DEFAULT_SELLER_INFORMATION, FALLBACK_PRODUCT_IMAGE, INITIAL_PRODUCTS } from './constants';
 import { TRANSLATIONS } from './translations';
 import Fragranea from './Fragranea';
+import { downloadInventory, inventoryCsv } from './admin-tools';
 import { STORE_DETAILS } from './storeDetails';
 import { Signature, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
 
@@ -56,6 +61,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [adminStock, setAdminStock] = useState('all');
   const [adminSort, setAdminSort] = useState('name');
+  const [stockUndo, setStockUndo] = useState<{ id: string; before: number; after: number } | null>(null);
   const [adminNotice, setAdminNotice] = useState('');
   const [adminCategory, setAdminCategory] = useState<Category | 'All'>('All');
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -375,6 +381,29 @@ export default function App({ adminMode = false, informationMode = false }: { ad
     } else {
       setPendingSection(section);
     }
+  };
+
+  const adjustStock = (product: Product, delta: number) => {
+    const nextStock = Math.max(0, product.stock + delta);
+    if (nextStock === product.stock) return;
+    setProducts(previous => previous.map(item => item.id === product.id ? { ...item, stock: nextStock, updatedAt: new Date().toISOString() } : item));
+    setStockUndo({ id: product.id, before: product.stock, after: nextStock });
+    setAdminNotice(`${product.name}: ${nextStock} ${t.admin.table.units}`);
+  };
+
+  const undoStock = () => {
+    if (!stockUndo) return;
+    setProducts(previous => previous.map(item => item.id === stockUndo.id && item.stock === stockUndo.after ? { ...item, stock: stockUndo.before, updatedAt: new Date().toISOString() } : item));
+    setStockUndo(null);
+    setAdminNotice(words(language, 'Stock adjustment undone.', 'Modification du stock annulée.', 'تم التراجع عن تعديل المخزون.'));
+  };
+
+  const duplicateProduct = (product: Product) => {
+    const copy: Product = { ...product, id: crypto.randomUUID(), name: `${product.name} (${words(language, 'copy', 'copie', 'نسخة')})`, sku: undefined, stock: 0, updatedAt: new Date().toISOString(), details: product.details ? { ...product.details } : undefined };
+    setProducts(previous => [copy, ...previous]);
+    setAdminSearchQuery(''); setAdminCategory('All'); setAdminStock('all');
+    setEditingProduct(copy);
+    setAdminNotice(words(language, 'Copy created with zero stock. Review its name, SKU, and quantity before making it available.', 'Copie créée sans stock. Vérifiez son nom, sa référence et sa quantité avant de la rendre disponible.', 'تم إنشاء نسخة بمخزون صفر. راجع الاسم والمرجع والكمية قبل إتاحتها.'));
   };
 
   const handleAdminLogout = async () => {
@@ -791,8 +820,13 @@ export default function App({ adminMode = false, informationMode = false }: { ad
               </button>
             </div>
 
+            <div className="flex flex-wrap gap-3 mb-5">
+              <button disabled={adminProducts.length === 0} onClick={() => downloadInventory(inventoryCsv(adminProducts), `luxe-loom-inventory-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8')} className="inline-flex items-center gap-2 px-4 py-3 border border-stone-200 bg-white rounded-lg text-sm disabled:opacity-40"><Download size={16} />{words(language, 'Export filtered inventory (CSV)', 'Exporter la sélection (CSV)', 'تصدير المخزون المصفى (CSV)')}</button>
+              <button onClick={() => downloadInventory(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), products }, null, 2), `luxe-loom-catalogue-${new Date().toISOString().slice(0, 10)}.json`, 'application/json')} className="inline-flex items-center gap-2 px-4 py-3 border border-stone-200 bg-white rounded-lg text-sm"><Download size={16} />{words(language, 'Download catalogue backup', 'Sauvegarder le catalogue', 'تنزيل نسخة من الكتالوج')}</button>
+              <a href="/" target="_blank" rel="noreferrer" className="inline-flex items-center px-4 py-3 border border-stone-200 bg-white rounded-lg text-sm">{words(language, 'Preview storefront ↗', 'Voir la boutique ↗', 'معاينة المتجر ↗')}</a>
+            </div>
             <p className="text-sm text-stone-500 mb-5">{words(language, 'Changes are saved in this browser. They are not shared with other devices or website visitors.', 'Les modifications sont enregistrées dans ce navigateur. Elles ne sont pas partagées avec les autres appareils ou visiteurs.', 'تُحفظ التغييرات في هذا المتصفح ولا تتم مشاركتها مع الأجهزة الأخرى أو زوار الموقع.')}</p>
-            {adminNotice && <p role="status" className="rounded-lg bg-emerald-50 text-emerald-800 p-4 mb-5">{adminNotice}</p>}
+            {adminNotice && <p role="status" className="rounded-lg bg-emerald-50 text-emerald-800 p-4 mb-5">{adminNotice}{stockUndo && products.some(product => product.id === stockUndo.id && product.stock === stockUndo.after) && <button onClick={undoStock} className="inline-flex items-center gap-2 ms-4 underline underline-offset-4"><RotateCcw size={14} />{words(language, 'Undo stock change', 'Annuler le stock', 'التراجع عن المخزون')}</button>}</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               {[
                 { label: t.admin.stats.products, value: inventoryStats.totalProducts, icon: Package, tone: 'text-stone-700 bg-stone-100' },
@@ -817,6 +851,12 @@ export default function App({ adminMode = false, informationMode = false }: { ad
               })}
             </div>
 
+            <section className="bg-white border border-stone-200 rounded-lg p-5 mb-6">
+              <div className="flex justify-between items-center gap-4 mb-4"><h3 className="font-serif text-2xl">{words(language, 'Restock priorities', 'Priorités de réapprovisionnement', 'أولويات إعادة التخزين')}</h3><button onClick={() => { setAdminCategory('All'); setAdminSearchQuery(''); setAdminStock('out'); }} className="text-sm text-gold-700 underline underline-offset-4">{words(language, 'View sold-out products', 'Voir les produits épuisés', 'عرض المنتجات النافدة')}</button></div>
+              <p className="text-sm text-stone-500 mb-4">{words(language, 'Products with five units or fewer, ordered by lowest stock.', 'Produits avec cinq unités ou moins, triés par stock croissant.', 'منتجات بخمس وحدات أو أقل مرتبة حسب المخزون الأقل.')}</p>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{products.filter(product => product.stock <= 5).sort((a, b) => a.stock - b.stock).slice(0, 6).map(product => <button key={product.id} onClick={() => setEditingProduct(product)} className="flex items-center gap-3 p-3 rounded-lg bg-stone-50 border border-stone-100 text-start hover:border-gold-400"><img src={resolveProductImage(product.image)} onError={handleImageFallback} alt="" className="h-12 w-12 rounded-lg object-cover" /><span><span className="block text-sm font-medium">{product.name}</span><span className={`text-xs ${product.stock === 0 ? 'text-red-700' : 'text-orange-700'}`}>{product.stock === 0 ? t.product.outOfStock : `${product.stock} ${t.admin.table.units}`}</span></span><Edit2 size={14} className="ms-auto shrink-0" /></button>)}</div>
+              {products.every(product => product.stock > 5) && <p className="text-sm text-emerald-700">{words(language, 'All products are above the low-stock threshold.', 'Tous les produits dépassent le seuil de stock faible.', 'جميع المنتجات أعلى من حد المخزون المنخفض.')}</p>}
+            </section>
             <form onSubmit={handleSellerInformationUpdate} className="bg-white rounded-lg shadow-sm border border-stone-200 p-4 sm:p-5 mb-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-5">
                 <div>
@@ -959,7 +999,9 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <span className={`w-2 h-2 rounded-full ${product.stock > 5 ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <button disabled={product.stock === 0} aria-label={`${words(language, 'Reduce stock', 'Réduire le stock', 'خفض المخزون')}: ${product.name}`} onClick={() => adjustStock(product, -1)} className="p-1 rounded border border-stone-200 disabled:opacity-30"><Minus size={14} /></button>
                             {product.stock} {t.admin.table.units}
+                            <button aria-label={`${words(language, 'Increase stock', 'Augmenter le stock', 'زيادة المخزون')}: ${product.name}`} onClick={() => adjustStock(product, 1)} className="p-1 rounded border border-stone-200"><Plus size={14} /></button>
                             {product.stock <= 5 && (
                               <span className="ml-2 px-2 py-1 rounded-full bg-red-50 text-[10px] font-bold uppercase tracking-wider text-red-700">
                                 {product.stock === 0 ? t.product.outOfStock : t.admin.lowStock}
@@ -971,6 +1013,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                         <td className="px-6 py-4 text-sm whitespace-nowrap">{(product.price * product.stock).toLocaleString()} {t.currency}</td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-2">
+                            <button onClick={() => duplicateProduct(product)} aria-label={`${words(language, 'Duplicate product', 'Dupliquer le produit', 'نسخ المنتج')}: ${product.name}`} title={words(language, 'Duplicate product', 'Dupliquer le produit', 'نسخ المنتج')} className="p-2 hover:bg-gold-100 rounded-lg text-gold-700"><Copy size={16} /></button>
                             <button 
                               onClick={() => setEditingProduct(product)}
                               aria-label={`${t.admin.modal.editTitle}: ${product.name}`}
