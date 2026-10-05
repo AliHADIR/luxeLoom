@@ -30,11 +30,13 @@ import {
   ShieldCheck,
   Truck,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Product, CartItem, Category, Language, SellerInformation } from './types';
 import { DEFAULT_SELLER_INFORMATION, FALLBACK_PRODUCT_IMAGE, INITIAL_PRODUCTS } from './constants';
 import { TRANSLATIONS } from './translations';
 import Fragranea from './Fragranea';
+import { STORE_DETAILS } from './storeDetails';
+import { Signature, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
 
 export default function App({ adminMode = false, informationMode = false }: { adminMode?: boolean; informationMode?: boolean }) {
   const [language, setLanguage] = useState<Language>('en');
@@ -310,6 +312,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       category,
       image: formData.get('image') as string || FALLBACK_PRODUCT_IMAGE,
       stock: Number(formData.get('stock')),
+      secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       details: buildProductDetails(formData, category),
     };
     setProducts(prev => [newProduct, ...prev]);
@@ -329,6 +332,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       category,
       image: formData.get('image') as string || FALLBACK_PRODUCT_IMAGE,
       stock: Number(formData.get('stock')),
+      secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       details: buildProductDetails(formData, category),
     };
     setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
@@ -364,7 +368,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   };
 
   return (
-    <div className="min-h-screen font-sans">
+    <MotionConfig reducedMotion="user"><div className="min-h-screen font-sans">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-stone-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -411,7 +415,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                 >
                   {t.nav.clothing}
                 </button>
-                <button onClick={() => browseSection('guide-parfum')} className="hover:text-gold-600 transition-colors">{language === 'fr' ? "L’art du parfum" : language === 'ar' ? 'فن العطور' : 'The art of perfume'}</button>
+                <button onClick={() => browseSection('guide-parfum')} className="hover:text-gold-600 transition-colors">{language === 'fr' ? "L’art du parfum" : language === 'ar' ? 'فن العطور' : 'THE ART OF PERFUME'}</button>
               </div>}
             </div>
 
@@ -653,6 +657,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
               </div>
             </section>
 
+            <Signature products={products} language={language} discover={product => { setSelectedProductId(product.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+            <ScentFinder products={products} language={language} discover={product => { setSelectedProductId(product.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
             {/* Products Grid */}
             <section id="products" className="max-w-7xl mx-auto px-4 py-24">
               <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
@@ -696,15 +702,16 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                         <img 
                           src={resolveProductImage(product.image)} 
                           alt={product.name}
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                           referrerPolicy="no-referrer"
                           onError={handleImageFallback}
                         />
+                        {product.secondaryImage && <img src={resolveProductImage(product.secondaryImage)} alt="" loading="lazy" onError={handleImageFallback} className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-500" />}
                         <div className="absolute inset-0 bg-stone-900/0 group-hover:bg-stone-900/20 transition-colors duration-500" />
                         <button 
                           onClick={(e) => { e.stopPropagation(); addToCart(product); }}
                           disabled={product.stock <= 0}
-                          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-stone-900 px-6 py-3 rounded-full font-medium shadow-xl opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 hover:bg-gold-500 hover:text-white disabled:bg-stone-200 disabled:text-stone-500 disabled:cursor-not-allowed flex items-center gap-2"
+                          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-stone-900 px-6 py-3 rounded-full font-medium shadow-xl opacity-100 translate-y-0 transition-all duration-300 hover:bg-gold-500 hover:text-white disabled:bg-stone-200 disabled:text-stone-500 disabled:cursor-not-allowed flex items-center gap-2"
                         >
                           <Plus className="w-4 h-4" /> {product.stock > 0 ? t.store.addToBag : t.product.outOfStock}
                         </button>
@@ -729,6 +736,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                         <div>
                           <h4 className="text-lg font-serif font-bold mb-1 group-hover:text-gold-600 transition-colors">{product.name}</h4>
                           <p className="text-stone-500 text-sm line-clamp-1">{product.description}</p>
+                          {product.category === 'Perfume' && <p className="text-xs text-gold-700 mt-3">{[perfumeDetails(product)?.family, product.size || product.details?.volume].filter(Boolean).join(' · ')}</p>}
                         </div>
                         <span className="text-lg font-medium">{product.price} {t.currency}</span>
                       </div>
@@ -745,6 +753,9 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                 </div>
               )}
             </section>
+            {(STORE_DETAILS.delivery || STORE_DETAILS.returns) && <aside className="max-w-7xl mx-auto px-4 pb-12 grid sm:grid-cols-2 gap-6">{STORE_DETAILS.delivery && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Delivery', 'Livraison', 'التوصيل')}</h3><p className="text-sm text-stone-600">{STORE_DETAILS.delivery[language]}</p></div>}{STORE_DETAILS.returns && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Returns', 'Retours', 'الإرجاع')}</h3><p className="text-sm text-stone-600">{STORE_DETAILS.returns[language]}</p></div>}</aside>}
+            {STORE_DETAILS.reviews.length > 0 && <section className="lux-reveal max-w-7xl mx-auto px-4 py-16"><h2 className="font-serif text-4xl mb-10">{words(language, 'From our customers', 'Les mots de nos clients', 'آراء عملائنا')}</h2><div className="grid md:grid-cols-3 gap-8">{STORE_DETAILS.reviews.map(review => <figure key={review.id} className="bg-white border border-gold-200 rounded-2xl p-8"><blockquote className="font-serif text-xl leading-relaxed mb-6">“{review.quote[language]}”</blockquote><figcaption className="text-sm text-stone-500">{review.author}</figcaption></figure>)}</div></section>}
+            <BrandStory language={language} />
             <Fragranea embedded />
             </>
           )
@@ -1313,6 +1324,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                         placeholder="https://..."
                       />
                     </div>
+                    <label className="col-span-2 text-xs text-stone-500">{words(language, 'Second product image URL', 'URL de la seconde image', 'رابط الصورة الثانية')}<input name="secondaryImage" type="url" defaultValue={editingProduct?.secondaryImage} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>
                     <div className="col-span-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
                       <div className="flex items-center gap-4">
                         <img
@@ -1470,6 +1482,6 @@ export default function App({ adminMode = false, informationMode = false }: { ad
           </div>
         </div>
       </footer>}
-    </div>
+    </div></MotionConfig>
   );
 }

@@ -9,6 +9,9 @@ export interface Product {
   category: Category;
   image: string;
   stock: number;
+  secondaryImage?: string;
+  fragranceFamily?: string;
+  size?: string;
   details?: {
     notes?: string[];
     scentFamily?: string;

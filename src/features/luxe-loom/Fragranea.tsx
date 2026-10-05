@@ -43,7 +43,7 @@ export default function Fragranea({ embedded = false }: { embedded?: boolean }) 
   return <div ref={page} id="guide-parfum" className={`fragranea ${embedded ? 'fr-embedded' : ''}`} lang="fr" dir="ltr">
     <header className="fr-guide-header">
       <div><span className="fr-eyebrow">Luxe & Loom · Le carnet Fragranea</span><Heading>L’art du parfum <em>d’exception.</em></Heading><p>Explorez les frontières olfactives entre créations confidentielles, secrets de distillation ancestrale et molécules synthétiques avant-gardistes.</p></div>
-      <button onClick={() => { download().catch(() => setDownloadError(true)); }} data-export-hide className="fr-download"><Download size={16} /> Télécharger le guide</button>
+      <button onClick={() => { download().catch(() => setDownloadError(true)); }} hidden style={{ display: 'none' }} data-export-hide className="fr-download"><Download size={16} /> Télécharger le guide</button>
     </header>
     <section id="visions" className="fr-section">
       <div className="fr-section-heading"><span className="fr-eyebrow">01 · Comprendre</span><h2>Niche ou designer ?</h2><p>Deux visions du luxe : la signature exclusive de connaisseur face aux icônes intemporelles de la haute couture.</p></div>
