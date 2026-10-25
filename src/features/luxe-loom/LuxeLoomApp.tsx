@@ -17,8 +17,6 @@ import {
   Download,
   Minus,
   RotateCcw,
-  Star, 
-  ArrowRight,
   ArrowLeft,
   LayoutDashboard,
   LogOut,
@@ -29,24 +27,22 @@ import {
   CircleDollarSign,
   Landmark,
   MessageCircle,
-  Droplets,
-  Ruler,
-  ShieldCheck,
-  Truck,
 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Product, CartItem, Category, Language, SellerInformation } from './types';
-import { DEFAULT_SELLER_INFORMATION, FALLBACK_PRODUCT_IMAGE, INITIAL_PRODUCTS } from './constants';
+import { CATALOG_ADDITION_IDS, DEFAULT_SELLER_INFORMATION, FALLBACK_PRODUCT_IMAGE, INITIAL_PRODUCTS } from './constants';
 import { TRANSLATIONS } from './translations';
 import Fragranea from './Fragranea';
 import { downloadInventory, inventoryCsv } from './admin-tools';
-import { STORE_DETAILS } from './storeDetails';
-import { Signature, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
+import FragranceStore from './FragranceStore';
+import { STOREFRONT_COPY } from './storefront-copy';
+import { words } from './StoreEnhancements';
 
 export default function App({ adminMode = false, informationMode = false }: { adminMode?: boolean; informationMode?: boolean }) {
   const [language, setLanguage] = useState<Language>('en');
 
   const t = TRANSLATIONS[language];
+  const c = STOREFRONT_COPY[language];
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [sellerInformation, setSellerInformation] = useState<SellerInformation>(DEFAULT_SELLER_INFORMATION);
   
@@ -54,7 +50,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
 
   const activeTab: 'store' | 'admin' = adminMode ? 'admin' : 'store';
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<Category | 'All'>('All');
+  const [catalogueReset, setCatalogueReset] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [pendingSection, setPendingSection] = useState<string | null>(null);
@@ -78,53 +74,57 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   const [modalCategory, setModalCategory] = useState<Category>('Perfume');
   const [modalImagePreview, setModalImagePreview] = useState(FALLBACK_PRODUCT_IMAGE);
   const [modalImageFailed, setModalImageFailed] = useState(false);
+  const [hasRestoredLocalState, setHasRestoredLocalState] = useState(false);
 
   // The imported app persists storefront state locally; restore it after hydration.
   useEffect(() => {
-    const category = new URLSearchParams(window.location.search).get('category');
-    if (category === 'Perfume' || category === 'Clothing') setSelectedCategory(category);
-    const savedLanguage = localStorage.getItem('luxe_loom_lang') as Language | null;
-    const savedProducts = localStorage.getItem('luxe_loom_products');
-    const savedSellerInformation = localStorage.getItem('luxe_loom_seller_information');
-    const savedCart = localStorage.getItem('luxe_loom_cart');
+    try {
+      const savedLanguage = localStorage.getItem('luxe_loom_lang') as Language | null;
+      const savedProducts = localStorage.getItem('luxe_loom_products');
+      const savedSellerInformation = localStorage.getItem('luxe_loom_seller_information');
+      const savedCart = localStorage.getItem('luxe_loom_cart');
 
-    if (savedLanguage) {
-      setLanguage(savedLanguage);
-    }
-
-    if (savedProducts) {
-      setProducts(JSON.parse(savedProducts));
-    }
-
-    if (savedSellerInformation) {
-      setSellerInformation({
-        ...DEFAULT_SELLER_INFORMATION,
-        ...JSON.parse(savedSellerInformation),
-      });
-    }
-
-    if (savedCart) {
-      setCart(JSON.parse(savedCart));
+      if (savedLanguage && ['en', 'fr', 'ar'].includes(savedLanguage)) setLanguage(savedLanguage);
+      if (savedProducts) {
+        const parsedProducts = JSON.parse(savedProducts);
+        if (Array.isArray(parsedProducts)) {
+          const migrationKey = 'luxe_loom_catalog_additions_v1';
+          if (!localStorage.getItem(migrationKey)) {
+            const existingIds = new Set(parsedProducts.map((product: Product) => product.id));
+            const additions = INITIAL_PRODUCTS.filter(product => CATALOG_ADDITION_IDS.includes(product.id) && !existingIds.has(product.id));
+            setProducts([...parsedProducts, ...additions]);
+            localStorage.setItem(migrationKey, 'done');
+          } else setProducts(parsedProducts);
+        }
+      }
+      if (savedSellerInformation) setSellerInformation({ ...DEFAULT_SELLER_INFORMATION, ...JSON.parse(savedSellerInformation) });
+      if (savedCart) setCart(JSON.parse(savedCart));
+    } finally {
+      setHasRestoredLocalState(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!hasRestoredLocalState) return;
     localStorage.setItem('luxe_loom_products', JSON.stringify(products));
-  }, [products]);
+  }, [products, hasRestoredLocalState]);
 
   useEffect(() => {
+    if (!hasRestoredLocalState) return;
     localStorage.setItem('luxe_loom_seller_information', JSON.stringify(sellerInformation));
-  }, [sellerInformation]);
+  }, [sellerInformation, hasRestoredLocalState]);
 
   useEffect(() => {
+    if (!hasRestoredLocalState) return;
     localStorage.setItem('luxe_loom_cart', JSON.stringify(cart));
-  }, [cart]);
+  }, [cart, hasRestoredLocalState]);
 
   useEffect(() => {
+    if (!hasRestoredLocalState) return;
     localStorage.setItem('luxe_loom_lang', language);
     document.documentElement.dir = !informationMode && language === 'ar' ? 'rtl' : 'ltr';
     document.documentElement.lang = informationMode ? 'fr' : language;
-  }, [language, informationMode]);
+  }, [language, informationMode, hasRestoredLocalState]);
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -152,15 +152,6 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       setModalImageFailed(false);
     }
   }, [editingProduct, showAddModal]);
-
-  const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
-      const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           p.description.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, selectedCategory, searchQuery]);
 
   const adminProducts = useMemo(() => {
     return products.filter(product => {
@@ -246,7 +237,11 @@ export default function App({ adminMode = false, informationMode = false }: { ad
     if (category === 'Perfume') {
       return {
         notes: splitList(formData.get('notes')),
-        concentration: String(formData.get('concentration') || '').trim() || undefined,
+        brand: formData.get('brand') as string || undefined,
+        concentration: formData.get('concentration') as string || undefined,
+        collection: (formData.get('collection') || undefined) as 'Niche' | 'Designer' | undefined,
+        format: (formData.get('format') || undefined) as 'Full bottle' | 'Discovery set' | undefined,
+        occasions: splitList(formData.get('occasions')),
         scentFamily: formData.get('scentFamily') as string || undefined,
         topNotes: splitList(formData.get('topNotes')),
         heartNotes: splitList(formData.get('heartNotes')),
@@ -375,7 +370,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   const browseSection = (section: string, category?: Category | 'All') => {
     setIsMobileMenuOpen(false);
     setSelectedProductId(null);
-    if (category) { setSelectedCategory(category); setSearchQuery(''); }
+    if (category) { setCatalogueReset(value => value + 1); setSearchQuery(''); }
     if (informationMode) {
       window.location.href = `/${category ? `?category=${category}` : ''}#${section}`;
     } else {
@@ -413,110 +408,33 @@ export default function App({ adminMode = false, informationMode = false }: { ad
 
   return (
     <MotionConfig reducedMotion="user"><div className="min-h-screen font-sans">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-stone-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <div className="flex items-center gap-8">
-              {!adminMode && <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                aria-label={language === 'fr' ? 'Ouvrir le menu' : 'Open menu'}
-                className="lg:hidden p-2 hover:bg-stone-100 rounded-full transition-colors"
-              >
-                <Menu className="w-6 h-6" />
-              </button>}
-              <button
-                type="button"
-                aria-label="Luxe & Loom home"
-                onClick={() => {
-                  if (informationMode) window.location.href = '/';
-                  else { setSelectedProductId(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-                }}
-                className={`shrink-0 ${adminMode ? '' : 'cursor-pointer'}`}
-              >
-                <img
-                  src="/logo.png"
-                  alt="Luxe & Loom"
-                  className="h-14 w-14 rounded-full object-cover shadow-sm"
-                />
-              </button>
-              {!adminMode && <div className="hidden lg:flex items-center gap-6 text-sm font-medium tracking-wide text-stone-600">
-                <button 
-                  onClick={() => browseSection('products', 'All')}
-                  className={`hover:text-stone-900 transition-colors ${!informationMode && selectedCategory === 'All' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
-                >
-                  {t.nav.collections}
-                </button>
-                <button 
-                  onClick={() => browseSection('products', 'Perfume')}
-                  className={`hover:text-stone-900 transition-colors ${!informationMode && selectedCategory === 'Perfume' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
-                >
-                  {t.nav.perfumes}
-                </button>
-                <button 
-                  onClick={() => browseSection('products', 'Clothing')}
-                  className={`hover:text-stone-900 transition-colors ${!informationMode && selectedCategory === 'Clothing' && activeTab === 'store' ? 'text-stone-900 border-b-2 border-gold-500' : ''}`}
-                >
-                  {t.nav.clothing}
-                </button>
-                <button onClick={() => browseSection('guide-parfum')} className="hover:text-gold-600 transition-colors">{language === 'fr' ? "L’art du parfum" : language === 'ar' ? 'فن العطور' : 'THE ART OF PERFUME'}</button>
-              </div>}
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-2 mr-2">
-                <select 
-                  value={language} 
-                  onChange={(e) => setLanguage(e.target.value as Language)}
-                  className="bg-transparent border-none text-xs font-bold text-stone-500 uppercase tracking-widest focus:ring-0 cursor-pointer hover:text-stone-900"
-                >
-                  <option value="en">EN</option>
-                  <option value="fr">FR</option>
-                  <option value="ar">AR</option>
-                </select>
-              </div>
-              {!adminMode && !informationMode && <div className="hidden md:flex items-center bg-stone-100 rounded-full px-4 py-2">
-                <Search className="w-4 h-4 text-stone-400" />
-                <input 
-                  type="text" 
-                  placeholder={t.nav.search}
-                  className="bg-transparent border-none focus:ring-0 text-sm ml-2 w-40"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>}
-              {!adminMode && <button
-                onClick={() => setIsCartOpen(true)}
-                className="relative p-2 hover:bg-stone-100 rounded-full transition-colors"
-              >
-                <ShoppingBag className="w-6 h-6" />
-                {cart.length > 0 && (
-                  <span className="absolute top-0 right-0 bg-gold-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white">
-                    {cart.reduce((a, b) => a + b.quantity, 0)}
-                  </span>
-                )}
-              </button>}
-              {adminMode && (
-                <>
-                  <Link href="/" className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-600" title={t.nav.store}>
-                    <LayoutDashboard className="w-6 h-6" />
-                  </Link>
-                  <button onClick={handleAdminLogout} className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-600" title="Log out">
-                    <LogOut className="w-6 h-6" />
-                  </button>
-                </>
-              )}
-            </div>
+      <nav className="ps-header fixed top-0 left-0 right-0 z-50 glass border-b border-stone-200" aria-label="Main navigation">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-20 gap-4">
+          <div className="flex items-center gap-4">
+            {!adminMode && <button aria-label={language === 'fr' ? 'Ouvrir le menu' : 'Open menu'} onClick={() => setIsMobileMenuOpen(true)} className="lg:hidden p-2"><Menu className="w-5 h-5" /></button>}
+            <button aria-label="Luxe & Loom home" className="ps-brand-with-logo" onClick={() => { if (adminMode || informationMode) window.location.href = '/'; else { setSelectedProductId(null); window.scrollTo({ top: 0, behavior: 'smooth' }); } }}><img src="/logo.png" alt="" className="ps-logo" /><span className="ps-brand"><span>Luxe & Loom</span><small>Fragrance boutique</small></span></button>
+          </div>
+          {!adminMode && <div className="hidden lg:flex items-center gap-7 text-[11px] text-stone-600">
+            <button onClick={() => browseSection('products', 'Perfume')}>{c.navShop}</button>
+            <button onClick={() => browseSection('discover')}>{c.navDiscover}</button>
+            <button onClick={() => browseSection('guide-parfum')}>{c.navGuide}</button>
+            <button onClick={() => browseSection('help')}>{c.navHelp}</button>
+          </div>}
+          <div className="flex items-center gap-2 sm:gap-4">
+            <select aria-label="Language" value={language} onChange={event => setLanguage(event.target.value as Language)} className="bg-transparent text-[10px] text-stone-500 py-2"><option value="en">EN</option><option value="fr">FR</option><option value="ar">AR</option></select>
+            {!adminMode && <><button aria-label={c.search} onClick={() => browseSection('products')} className="hidden sm:block p-2"><Search className="w-5 h-5" /></button><button onClick={() => setIsCartOpen(true)} aria-label={`${t.cart.title} (${cartItemCount})`} className="relative p-2"><ShoppingBag className="w-5 h-5" />{cartItemCount > 0 && <span className="absolute -top-1 -right-1 bg-gold-600 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">{cartItemCount}</span>}</button></>}
+            {adminMode && <><Link href="/" aria-label={t.nav.store} className="p-2"><LayoutDashboard className="w-5 h-5" /></Link><button onClick={handleAdminLogout} aria-label="Log out" className="p-2"><LogOut className="w-5 h-5" /></button></>}
           </div>
         </div>
       </nav>
-
       {!adminMode && isMobileMenuOpen && <div className="fixed inset-0 z-[60] bg-stone-900/40" onClick={() => setIsMobileMenuOpen(false)}>
-        <nav aria-label="Menu mobile" className="bg-gold-50 w-72 max-w-full h-full p-6 space-y-6" onClick={event => event.stopPropagation()}>
-          <button aria-label="Fermer le menu" onClick={() => setIsMobileMenuOpen(false)} className="block ml-auto"><X /></button>
-          <Link href="/" className="block font-serif text-xl">Luxe & Loom</Link>
-          {(['All', 'Perfume', 'Clothing'] as const).map(category => <button key={category} className="block" onClick={() => browseSection('products', category)}>{category === 'All' ? t.nav.collections : category === 'Perfume' ? t.nav.perfumes : t.nav.clothing}</button>)}
-          <button onClick={() => browseSection('guide-parfum')} className="block text-gold-700">L’art du parfum</button>
+        <nav aria-label="Mobile navigation" className="ps-mobile-menu bg-gold-50 w-72 max-w-full h-full p-6 space-y-7" onClick={event => event.stopPropagation()}>
+          <button aria-label="Close menu" onClick={() => setIsMobileMenuOpen(false)} className="block ml-auto p-2"><X /></button>
+          <span className="ps-brand-with-logo"><img src="/logo.png" alt="Luxe & Loom" className="ps-logo" /><span className="ps-brand"><span>Luxe & Loom</span><small>Fragrance boutique</small></span></span>
+          <button className="block" onClick={() => browseSection('products', 'Perfume')}>{c.navShop}</button>
+          <button className="block" onClick={() => browseSection('discover')}>{c.navDiscover}</button>
+          <button className="block" onClick={() => browseSection('guide-parfum')}>{c.navGuide}</button>
+          <button className="block" onClick={() => browseSection('help')}>{c.navHelp}</button>
         </nav>
       </div>}
 
@@ -524,282 +442,40 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       <main className="pt-20">
         {informationMode ? <Fragranea /> : activeTab === 'store' ? (
           selectedProduct ? (
-            <section className="max-w-7xl mx-auto px-4 py-8 sm:py-12">
-              <button
-                onClick={() => setSelectedProductId(null)}
-                className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-stone-500 hover:text-stone-900 transition-colors"
-              >
-                <ArrowLeft className={`w-4 h-4 ${language === 'ar' ? 'rotate-180' : ''}`} />
-                {t.product.back}
-              </button>
-
-              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)] gap-10 lg:gap-14 items-start">
-                <div className="relative overflow-hidden rounded-lg bg-stone-100">
-                  <img
-                    src={resolveProductImage(selectedProduct.image)}
-                    alt={selectedProduct.name}
-                    className="aspect-[4/5] w-full object-cover lg:aspect-[5/6]"
-                    referrerPolicy="no-referrer"
-                    onError={handleImageFallback}
-                  />
-                  <div className="absolute left-4 top-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold tracking-widest text-stone-900 uppercase">
-                    {selectedProduct.category === 'Perfume' ? t.store.perfume : t.store.clothing}
-                  </div>
-                </div>
-
-                <div className="lg:sticky lg:top-28">
-                  <div className="flex flex-wrap items-center gap-3 mb-5">
-                    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${
-                      selectedProduct.stock > 5
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : selectedProduct.stock > 0
-                          ? 'bg-orange-50 text-orange-700'
-                          : 'bg-red-50 text-red-700'
-                    }`}>
-                      <span className={`h-2 w-2 rounded-full ${
-                        selectedProduct.stock > 5 ? 'bg-emerald-500' : selectedProduct.stock > 0 ? 'bg-orange-500' : 'bg-red-500'
-                      }`} />
-                      {selectedProduct.stock > 5
-                        ? t.product.inStock
-                        : selectedProduct.stock > 0
-                          ? t.product.lowStock.replace('{count}', selectedProduct.stock.toString())
-                          : t.product.outOfStock}
-                    </span>
-                    <span className="text-sm text-stone-500">{selectedProduct.stock} {t.admin.table.units}</span>
-                  </div>
-
-                  <h2 className="text-4xl sm:text-5xl font-serif font-bold leading-tight">{selectedProduct.name}</h2>
-                  <p className="mt-5 text-lg leading-relaxed text-stone-600">{selectedProduct.description}</p>
-                  <div className="mt-6 text-3xl font-semibold">{selectedProduct.price} {t.currency}</div>
-
-                  <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="rounded-lg border border-stone-200 bg-white p-4">
-                      <div className="flex items-center gap-2 font-bold text-stone-900">
-                        {selectedProduct.category === 'Perfume' ? (
-                          <Droplets className="w-5 h-5 text-gold-700" />
-                        ) : (
-                          <Ruler className="w-5 h-5 text-gold-700" />
-                        )}
-                        {selectedProduct.category === 'Perfume' ? t.product.volume : t.product.size}
-                      </div>
-                      <p className="mt-2 text-sm text-stone-600">
-                        {selectedProduct.category === 'Perfume'
-                          ? selectedProduct.details?.volume ?? t.product.defaultVolume
-                          : selectedProduct.details?.size ?? t.product.defaultSize}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-stone-200 bg-white p-4">
-                      <div className="flex items-center gap-2 font-bold text-stone-900">
-                        <Truck className="w-5 h-5 text-gold-700" />
-                        {t.product.delivery}
-                      </div>
-                      <p className="mt-2 text-sm text-stone-600">
-                        {selectedProduct.details?.delivery ?? t.product.defaultDelivery}
-                      </p>
-                    </div>
-                  </div>
-
-                  {selectedProduct.category === 'Perfume' ? (
-                    <div className="mt-8 rounded-lg border border-stone-200 bg-white p-5 space-y-5">
-                      <div className="flex items-center gap-2 font-bold text-stone-900">
-                        <ShieldCheck className="w-5 h-5 text-gold-700" />
-                        {t.product.notes}
-                      </div>
-                      <div className="rounded-lg bg-stone-50 p-4">
-                        <p className="text-xs font-bold uppercase tracking-widest text-stone-400">{t.product.scentFamily}</p>
-                        <p className="mt-1 font-semibold text-stone-900">{selectedProduct.details?.scentFamily ?? t.product.defaultScentFamily}</p>
-                      </div>
-                      {[
-                        { label: t.product.topNotes, items: selectedProduct.details?.topNotes },
-                        { label: t.product.heartNotes, items: selectedProduct.details?.heartNotes },
-                        { label: t.product.baseNotes, items: selectedProduct.details?.baseNotes ?? selectedProduct.details?.notes },
-                      ].map(section => (
-                        <div key={section.label}>
-                          <p className="text-xs font-bold uppercase tracking-widest text-stone-400">{section.label}</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {(section.items && section.items.length > 0 ? section.items : [t.product.defaultNote]).map(item => (
-                              <span key={`${section.label}-${item}`} className="rounded-full bg-stone-100 px-3 py-1 text-sm font-medium text-stone-700">
-                                {item}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-8 rounded-lg border border-stone-200 bg-white p-5">
-                      <div className="flex items-center gap-2 font-bold text-stone-900">
-                        <ShieldCheck className="w-5 h-5 text-gold-700" />
-                        {t.product.materials}
-                      </div>
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {[
-                          { label: t.product.material, value: selectedProduct.details?.material ?? selectedProduct.details?.materials?.join(', ') ?? t.product.defaultMaterial },
-                          { label: t.product.color, value: selectedProduct.details?.color ?? t.product.defaultColor },
-                        ].map(item => (
-                          <div key={item.label} className="rounded-lg bg-stone-50 p-4">
-                            <p className="text-xs font-bold uppercase tracking-widest text-stone-400">{item.label}</p>
-                            <p className="mt-1 font-semibold text-stone-900">{item.value}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => addToCart(selectedProduct)}
-                    disabled={selectedProduct.stock <= 0}
-                    className="mt-8 w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-gold-600 disabled:bg-stone-300 disabled:text-stone-500 disabled:cursor-not-allowed transition-colors shadow-lg flex items-center justify-center gap-2"
-                  >
-                    <Plus className="w-5 h-5" />
-                    {selectedProduct.stock > 0 ? t.store.addToBag : t.product.outOfStock}
-                  </button>
+            <section className="max-w-7xl mx-auto px-5 py-8 sm:py-12">
+              <button onClick={() => setSelectedProductId(null)} className="mb-8 inline-flex items-center gap-2 text-xs text-stone-500 hover:text-gold-700"><ArrowLeft className={`w-4 h-4 ${language === 'ar' ? 'rotate-180' : ''}`} />{t.product.back}</button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+                <div className="relative overflow-hidden bg-[#eee8de]"><img src={resolveProductImage(selectedProduct.image)} alt={selectedProduct.name} className="aspect-[4/4.7] w-full object-cover" onError={handleImageFallback} /><span className="ps-stock">{selectedProduct.stock > 0 ? c.inStock : c.soldOut}</span></div>
+                <div>
+                  <span className="ps-eyebrow">{[selectedProduct.details?.brand, selectedProduct.details?.collection].filter(Boolean).join(' · ') || c.collectionEyebrow}</span>
+                  <h1 className="mt-4 text-4xl sm:text-5xl font-serif font-normal leading-tight">{selectedProduct.name}</h1>
+                  <p className="mt-5 text-sm leading-relaxed text-stone-500">{selectedProduct.description}</p>
+                  <div className="mt-6 text-2xl font-medium">{selectedProduct.price} {t.currency}</div>
+                  <div className="mt-5 flex flex-wrap gap-3 text-[11px] text-stone-500">{[selectedProduct.details?.volume, selectedProduct.details?.concentration, selectedProduct.details?.scentFamily].filter(Boolean).map(value => <span key={value} className="border border-stone-200 px-3 py-2 bg-white">{value}</span>)}</div>
+                  <div className="ps-detail-purchase"><button className="ps-primary disabled:opacity-40 disabled:cursor-not-allowed" onClick={() => addToCart(selectedProduct)} disabled={selectedProduct.stock <= 0}><Plus size={17} />{selectedProduct.stock > 0 ? c.add : c.soldOut}</button><p>{c.bagHint}</p></div>
+                  <div className="mt-7 grid grid-cols-2 gap-5 border-b border-stone-200 pb-6"><div><span className="ps-eyebrow">{t.product.volume}</span><p className="mt-2 text-xs leading-relaxed text-stone-500">{selectedProduct.details?.volume || c.askSize}</p></div><div><span className="ps-eyebrow">{t.product.delivery}</span><p className="mt-2 text-xs leading-relaxed text-stone-500">{selectedProduct.details?.delivery || c.askDelivery}</p></div></div>
+                  {(selectedProduct.details?.topNotes?.length || selectedProduct.details?.heartNotes?.length || selectedProduct.details?.baseNotes?.length || selectedProduct.details?.notes?.length) ? <div className="mt-7"><h2 className="font-serif text-2xl">{c.notes}</h2><p className="mt-2 mb-6 text-xs text-stone-500">{c.notesIntro}</p><div className="ps-note-pyramid">{[
+                    { label: t.product.topNotes, items: selectedProduct.details?.topNotes },
+                    { label: t.product.heartNotes, items: selectedProduct.details?.heartNotes },
+                    { label: t.product.baseNotes, items: selectedProduct.details?.baseNotes ?? selectedProduct.details?.notes },
+                  ].filter(section => section.items?.length).map((section, index) => <div className="ps-note-row" key={section.label}><span>0{index + 1}</span><div><p>{section.label}</p><div className="ps-note-values">{section.items?.join(' · ')}</div></div></div>)}</div></div> : null}
+                  {selectedProduct.details?.occasions?.length ? <div className="mt-6"><span className="ps-eyebrow">{c.occasions}</span><p className="mt-2 text-xs text-stone-500">{selectedProduct.details.occasions.join(' · ')}</p></div> : null}
+                  <button onClick={() => browseSection('guide-parfum')} className="mt-7 text-xs text-gold-700 underline underline-offset-4">{c.navGuide}</button>
                 </div>
               </div>
             </section>
           ) : (
             <>
-            {/* Hero Section */}
-            <section className="relative h-[65vh] min-h-[420px] max-h-[680px] overflow-hidden">
-              <div className="absolute inset-0">
-                <img 
-                  src="https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&q=80&w=2000" 
-                  alt="Hero" 
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-stone-900/30" />
-              </div>
-              <div className="relative h-full max-w-7xl mx-auto px-4 flex flex-col justify-center items-start text-white">
-                <motion.span 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-gold-300 font-medium tracking-[0.3em] mb-4"
-                >
-                  {t.hero.subtitle}
-                </motion.span>
-                <motion.h2 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="text-5xl md:text-7xl font-serif font-bold mb-8 max-w-2xl leading-tight"
-                >
-                  {t.hero.title}
-                </motion.h2>
-                <motion.button 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  onClick={() => {
-                    const el = document.getElementById('products');
-                    el?.scrollIntoView({ behavior: 'smooth' });
-                  }}
-                  className="bg-white text-stone-900 px-8 py-4 rounded-full font-medium flex items-center gap-2 hover:bg-gold-500 hover:text-white transition-all group"
-                >
-                  {t.hero.cta} <ArrowRight className={`w-4 h-4 group-hover:translate-x-1 transition-transform ${language === 'ar' ? 'rotate-180' : ''}`} />
-                </motion.button>
-              </div>
-            </section>
-
-            <Signature products={products} language={language} discover={product => { setSelectedProductId(product.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
-            <ScentFinder products={products} language={language} discover={product => { setSelectedProductId(product.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
-            {/* Products Grid */}
-            <section id="products" className="max-w-7xl mx-auto px-4 py-24">
-              <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
-                <div>
-                  <h3 className="text-3xl font-serif font-bold mb-4">{t.store.title}</h3>
-                  <p className="text-stone-500 max-w-md">{t.store.description}</p>
-                </div>
-                <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar w-full md:w-auto">
-                  {(['All', 'Perfume', 'Clothing'] as const).map(cat => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-6 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                        selectedCategory === cat 
-                          ? 'bg-stone-900 text-white shadow-lg' 
-                          : 'bg-white text-stone-600 border border-stone-200 hover:border-gold-400'
-                      }`}
-                    >
-                      {cat === 'All' ? t.store.all : cat === 'Perfume' ? t.store.perfume : t.store.clothing}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
-                <AnimatePresence mode="popLayout">
-                  {filteredProducts.map((product) => (
-                    <motion.div
-                      layout
-                      key={product.id}
-                      onClick={() => {
-                        setSelectedProductId(product.id);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      className="group cursor-pointer"
-                    >
-                      <div className="relative aspect-[4/5] overflow-hidden bg-stone-100 mb-6 rounded-2xl">
-                        <img 
-                          src={resolveProductImage(product.image)} 
-                          alt={product.name}
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          referrerPolicy="no-referrer"
-                          onError={handleImageFallback}
-                        />
-                        {product.secondaryImage && <img src={resolveProductImage(product.secondaryImage)} alt="" loading="lazy" onError={handleImageFallback} className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-500" />}
-                        <div className="absolute inset-0 bg-stone-900/0 group-hover:bg-stone-900/20 transition-colors duration-500" />
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); addToCart(product); }}
-                          disabled={product.stock <= 0}
-                          className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-stone-900 px-6 py-3 rounded-full font-medium shadow-xl opacity-100 translate-y-0 transition-all duration-300 hover:bg-gold-500 hover:text-white disabled:bg-stone-200 disabled:text-stone-500 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                          <Plus className="w-4 h-4" /> {product.stock > 0 ? t.store.addToBag : t.product.outOfStock}
-                        </button>
-                        <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold tracking-widest text-stone-900 uppercase">
-                          {product.category === 'Perfume' ? t.store.perfume : t.store.clothing}
-                        </div>
-                        <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase ${
-                          product.stock > 5
-                            ? 'bg-emerald-50/95 text-emerald-700'
-                            : product.stock > 0
-                              ? 'bg-orange-50/95 text-orange-700'
-                              : 'bg-red-50/95 text-red-700'
-                        }`}>
-                          {product.stock > 5
-                            ? t.product.inStock
-                            : product.stock > 0
-                              ? t.product.lowStock.replace('{count}', product.stock.toString())
-                              : t.product.outOfStock}
-                        </div>
-                      </div>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="text-lg font-serif font-bold mb-1 group-hover:text-gold-600 transition-colors">{product.name}</h4>
-                          <p className="text-stone-500 text-sm line-clamp-1">{product.description}</p>
-                          {product.category === 'Perfume' && <p className="text-xs text-gold-700 mt-3">{[perfumeDetails(product)?.family, product.size || product.details?.volume].filter(Boolean).join(' · ')}</p>}
-                        </div>
-                        <span className="text-lg font-medium">{product.price} {t.currency}</span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-              
-              {filteredProducts.length === 0 && (
-                <div className="text-center py-24">
-                  <Package className="w-16 h-16 text-stone-200 mx-auto mb-4" />
-                  <h4 className="text-xl font-serif font-bold mb-2">{t.store.noProducts}</h4>
-                  <p className="text-stone-500">{t.store.adjustSearch}</p>
-                </div>
-              )}
-            </section>
-            {(STORE_DETAILS.delivery || STORE_DETAILS.returns) && <aside className="max-w-7xl mx-auto px-4 pb-12 grid sm:grid-cols-2 gap-6">{STORE_DETAILS.delivery && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Delivery', 'Livraison', 'التوصيل')}</h3><p className="text-sm text-stone-600">{STORE_DETAILS.delivery[language]}</p></div>}{STORE_DETAILS.returns && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Returns', 'Retours', 'الإرجاع')}</h3><p className="text-sm text-stone-600">{STORE_DETAILS.returns[language]}</p></div>}</aside>}
-            {STORE_DETAILS.reviews.length > 0 && <section className="lux-reveal max-w-7xl mx-auto px-4 py-16"><h2 className="font-serif text-4xl mb-10">{words(language, 'From our customers', 'Les mots de nos clients', 'آراء عملائنا')}</h2><div className="grid md:grid-cols-3 gap-8">{STORE_DETAILS.reviews.map(review => <figure key={review.id} className="bg-white border border-gold-200 rounded-2xl p-8"><blockquote className="font-serif text-xl leading-relaxed mb-6">“{review.quote[language]}”</blockquote><figcaption className="text-sm text-stone-500">{review.author}</figcaption></figure>)}</div></section>}
-            <BrandStory language={language} />
+            <FragranceStore
+              key={catalogueReset}
+              products={products}
+              language={language}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              onOpenProduct={product => { setSelectedProductId(product.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              onAddToCart={addToCart}
+              onGuide={() => browseSection('guide-parfum')}
+            />
             <Fragranea embedded />
             </>
           )
@@ -1423,6 +1099,13 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                     </div>
                     {modalCategory === 'Perfume' ? (
                       <>
+                        {[
+                          { name: 'brand', label: c.brand, value: editingProduct?.details?.brand },
+                          { name: 'concentration', label: c.concentration, value: editingProduct?.details?.concentration },
+                          { name: 'occasions', label: c.occasions, value: editingProduct?.details?.occasions?.join(', ') },
+                        ].map(field => <div key={field.name}><label htmlFor={`product-${field.name}`} className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{field.label}</label><input id={`product-${field.name}`} name={field.name} defaultValue={field.value} className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></div>)}
+                        <div><label htmlFor="product-format" className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{language === 'fr' ? 'Format' : language === 'ar' ? 'نوع المنتج' : 'Format'}</label><select id="product-format" name="format" defaultValue={editingProduct?.details?.format ?? 'Full bottle'} className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl"><option value="Full bottle">{language === 'fr' ? 'Flacon' : language === 'ar' ? 'زجاجة' : 'Full bottle'}</option><option value="Discovery set">{language === 'fr' ? 'Coffret découverte' : language === 'ar' ? 'مجموعة تجريبية' : 'Discovery set'}</option></select></div>
+                        <div><label htmlFor="product-collection" className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{language === 'fr' ? 'Collection' : language === 'ar' ? 'المجموعة' : 'Collection'}</label><select id="product-collection" name="collection" defaultValue={editingProduct?.details?.collection ?? ''} className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl"><option value="">—</option><option value="Niche">Niche</option><option value="Designer">Designer</option></select></div>
                         <div>
                           <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{t.admin.modal.volume}</label>
                           <input
@@ -1512,54 +1195,15 @@ export default function App({ adminMode = false, informationMode = false }: { ad
         )}
       </AnimatePresence>
 
-      {/* Footer */}
-      {!adminMode && <footer className="bg-stone-900 text-white py-24">
-        <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-12">
-          <div className="col-span-1 md:col-span-2">
-            <img
-              src="/logo.png"
-              alt="Luxe & Loom — Parfum & Clothes"
-              className="w-44 rounded-2xl mb-6"
-            />
-            <p className="text-stone-400 max-w-sm mb-8 leading-relaxed">
-              {t.footer.desc}
-            </p>
-            <div className="flex gap-4">
-              <div className="w-10 h-10 rounded-full bg-stone-800 flex items-center justify-center hover:bg-gold-500 transition-colors cursor-pointer">
-                <Star className="w-5 h-5" />
-              </div>
-              <div className="w-10 h-10 rounded-full bg-stone-800 flex items-center justify-center hover:bg-gold-500 transition-colors cursor-pointer">
-                <Check className="w-5 h-5" />
-              </div>
-            </div>
-          </div>
-          <div>
-            <h4 className="text-sm font-bold tracking-[0.2em] mb-8 uppercase">{t.footer.shop}</h4>
-            <ul className="space-y-4 text-stone-400">
-              <li className="hover:text-white transition-colors cursor-pointer">{t.nav.collections}</li>
-              <li className="hover:text-white transition-colors cursor-pointer">{t.nav.perfumes}</li>
-              <li className="hover:text-white transition-colors cursor-pointer">{t.nav.clothing}</li>
-              <li><button onClick={() => browseSection('guide-parfum')} className="hover:text-white transition-colors">L’art du parfum</button></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-sm font-bold tracking-[0.2em] mb-8 uppercase">{t.footer.support}</h4>
-            <ul className="space-y-4 text-stone-400">
-              <li className="hover:text-white transition-colors cursor-pointer">Contact Us</li>
-              <li className="hover:text-white transition-colors cursor-pointer">Shipping Policy</li>
-              <li className="hover:text-white transition-colors cursor-pointer">Returns & Exchanges</li>
-              <li className="hover:text-white transition-colors cursor-pointer">FAQs</li>
-            </ul>
-          </div>
+      {!adminMode && <footer className="ps-footer">
+        <div className="ps-footer-grid">
+          <div><span className="ps-brand-with-logo"><img src="/logo.png" alt="Luxe & Loom" className="ps-logo" /><span className="ps-brand"><span>Luxe & Loom</span><small>Fragrance boutique</small></span></span><p>{c.footerDesc}</p></div>
+          <div><h3>{c.footerShop}</h3><button onClick={() => browseSection('products', 'Perfume')}>{c.navShop}</button><button onClick={() => browseSection('discover')}>{c.navDiscover}</button><button onClick={() => browseSection('guide-parfum')}>{c.navGuide}</button></div>
+          <div><h3>{c.footerHelp}</h3><button onClick={() => browseSection('help')}>{c.navHelp}</button><button onClick={() => setIsCartOpen(true)}>{t.cart.title}</button></div>
         </div>
-        <div className="max-w-7xl mx-auto px-4 mt-24 pt-8 border-t border-stone-800 flex flex-col md:flex-row justify-between items-center gap-4 text-stone-500 text-sm">
-          <p>{t.footer.rights}</p>
-          <div className="flex gap-8">
-            <span className="hover:text-white cursor-pointer">{t.footer.privacy}</span>
-            <span className="hover:text-white cursor-pointer">{t.footer.terms}</span>
-          </div>
-        </div>
+        <div className="ps-footer-bottom"><span>© {new Date().getFullYear()} {c.footerRights}</span><Link href="/information">Fragranea · {c.navGuide}</Link></div>
       </footer>}
+
     </div></MotionConfig>
   );
 }

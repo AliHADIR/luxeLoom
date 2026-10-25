@@ -16,9 +16,13 @@ export interface Product {
   fragranceFamily?: string;
   size?: string;
   details?: {
+    brand?: string;
+    concentration?: string;
+    collection?: 'Niche' | 'Designer';
+    format?: 'Full bottle' | 'Discovery set';
+    occasions?: string[];
     notes?: string[];
     scentFamily?: string;
-    concentration?: string;
     topNotes?: string[];
     heartNotes?: string[];
     baseNotes?: string[];
