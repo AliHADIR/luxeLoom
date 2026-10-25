@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { Product, CartItem, Category, Language, StoreOrder, OrderStatus } from './types';
-import { CATALOG_ADDITIONS, INITIAL_PRODUCTS } from './constants';
+import { CATALOG_ADDITIONS, INITIAL_PRODUCTS, LEGACY_CATALOG_IMAGES } from './constants';
 import { TRANSLATIONS } from './translations';
 import logo from '../Images/logo.jpg';
 import heroImage from '../Images/slide1.jpg';
@@ -64,16 +64,24 @@ function readStoreContent(): EditableStoreContent {
 function migrateProduct(product: Product): Product | null {
   if (!product || String(product.category) === 'Clothing') return null;
   const seed = INITIAL_PRODUCTS.find(item => item.id === product.id);
-  const hasLegacySeedImage = Boolean(seed && product.image?.includes(LEGACY_SEED_IMAGES[product.id]));
-  const migratedImage = hasLegacySeedImage ? seed?.image : product.image;
-  if (CATEGORIES.includes(product.category)) return { ...product, image: migratedImage || product.image };
+  const migrateImage = (image?: string) => {
+    if (!image) return image;
+    if (seed && LEGACY_SEED_IMAGES[product.id] && image.includes(LEGACY_SEED_IMAGES[product.id])) return seed.image;
+    const localPath = image.split(/[?#]/)[0];
+    const isLegacyLocalAsset = /^(?:\/catalog\/|\/Images\/|Images\/|\.\/Images\/)/.test(localPath);
+    const legacyFilename = localPath.split('/').pop() || '';
+    return isLegacyLocalAsset ? LEGACY_CATALOG_IMAGES[legacyFilename] || image : image;
+  };
+  const migratedImage = migrateImage(product.image) || product.image;
+  const migratedSecondaryImage = migrateImage(product.secondaryImage);
+  if (CATEGORIES.includes(product.category)) return { ...product, image: migratedImage, secondaryImage: migratedSecondaryImage };
   const name = `${product.name || ''} ${product.description || ''}`.toLowerCase();
   const category: Category = /women|woman|femme|rose|floral|jasmine|velvet/.test(name)
     ? 'Femme'
     : /men|man|homme|masculine|foug[eè]re/.test(name)
       ? 'Homme'
       : 'Niche';
-  return { ...product, category, image: migratedImage || product.image };
+  return { ...product, category, image: migratedImage, secondaryImage: migratedSecondaryImage };
 }
 
 function readProducts(): Product[] {

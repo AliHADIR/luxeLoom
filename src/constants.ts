@@ -9,6 +9,18 @@ import flowerBottleImage from '../Images/catalog/flower-bottle.jpg';
 import amberImage from '../Images/catalog/amber-noir.jpg';
 import nicheOudImage from '../Images/catalog/niche-oud.jpg';
 
+export const LEGACY_CATALOG_IMAGES: Record<string, string> = {
+  'soft-florals.jpg': midnightBloomImage,
+  'stone-bottle.jpg': oudNoirImage,
+  'femme-dried-florals.jpg': velvetRoseImage,
+  'homme-noir.jpg': hommeNoirImage,
+  'black-bottle.jpg': blackBottleImage,
+  'femme-roses.jpg': roseImage,
+  'flower-bottle.jpg': flowerBottleImage,
+  'amber-noir.jpg': amberImage,
+  'niche-oud.jpg': nicheOudImage,
+};
+
 const BASE_PRODUCTS: Product[] = [
   {
     id: '1',
