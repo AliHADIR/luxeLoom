@@ -133,10 +133,14 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isOrderComplete, setIsOrderComplete] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
 
   // Persist data
   useEffect(() => {
-    localStorage.setItem('luxe_loom_products', JSON.stringify(products));
+    const nextValue = JSON.stringify(products);
+    if (localStorage.getItem('luxe_loom_products') !== nextValue) {
+      localStorage.setItem('luxe_loom_products', nextValue);
+    }
   }, [products]);
 
   useEffect(() => {
@@ -144,8 +148,31 @@ export default function App() {
   }, [cart]);
 
   useEffect(() => {
-    localStorage.setItem('luxe_loom_orders', JSON.stringify(orders));
+    const nextValue = JSON.stringify(orders);
+    if (localStorage.getItem('luxe_loom_orders') !== nextValue) {
+      localStorage.setItem('luxe_loom_orders', nextValue);
+    }
   }, [orders]);
+
+  useEffect(() => {
+    const syncStoreData = (event: StorageEvent) => {
+      if (!event.newValue) return;
+      try {
+        if (event.key === 'luxe_loom_products') {
+          const nextProducts = JSON.parse(event.newValue);
+          if (Array.isArray(nextProducts)) setProducts(nextProducts);
+        }
+        if (event.key === 'luxe_loom_orders') {
+          const nextOrders = JSON.parse(event.newValue);
+          if (Array.isArray(nextOrders)) setOrders(nextOrders);
+        }
+      } catch {
+        // Ignore invalid data from another browser tab.
+      }
+    };
+    window.addEventListener('storage', syncStoreData);
+    return () => window.removeEventListener('storage', syncStoreData);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('luxe_loom_store_content', JSON.stringify(storeContent));
@@ -240,11 +267,27 @@ export default function App() {
   const openCheckout = () => {
     setIsCartOpen(false);
     setIsOrderComplete(false);
+    setCheckoutError('');
     setIsCheckoutOpen(true);
   };
 
   const handleCheckout = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const latestProducts = readProducts();
+    const unavailableItem = cart.find(item => {
+      const product = latestProducts.find(current => current.id === item.id);
+      return !product || product.stock < item.quantity;
+    });
+    if (unavailableItem) {
+      setCheckoutError(words(
+        language,
+        `${unavailableItem.name} no longer has enough stock. Update your bag and try again.`,
+        `Le stock de ${unavailableItem.name} est insuffisant. Modifiez votre panier et réessayez.`,
+        `الكمية المتاحة من ${unavailableItem.name} غير كافية. حدّث سلتك ثم أعد المحاولة.`,
+      ));
+      return;
+    }
+
     const form = new FormData(e.currentTarget);
     const order: StoreOrder = {
       id: `FR-${Date.now().toString().slice(-8)}`,
@@ -259,8 +302,17 @@ export default function App() {
       total: cartTotal,
       status: 'New',
     };
-    setOrders(previous => [order, ...previous]);
+    const updatedOrders = [order, ...readOrders()];
+    localStorage.setItem('luxe_loom_orders', JSON.stringify(updatedOrders));
+    setOrders(updatedOrders);
+    const updatedProducts = latestProducts.map(product => {
+      const orderedItem = cart.find(item => item.id === product.id);
+      return orderedItem ? { ...product, stock: product.stock - orderedItem.quantity } : product;
+    });
+    localStorage.setItem('luxe_loom_products', JSON.stringify(updatedProducts));
+    setProducts(updatedProducts);
     setCart([]);
+    setCheckoutError('');
     setIsOrderComplete(true);
   };
 
@@ -748,6 +800,7 @@ export default function App() {
                       <span>{t.cart.total}</span>
                       <span>{cartTotal} {t.currency}</span>
                     </div>
+                    {checkoutError && <p className="text-red-600 text-sm" role="alert">{checkoutError}</p>}
                     <button type="submit" className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-gold-600 transition-colors shadow-lg">
                       {t.checkout.placeOrder}
                     </button>
