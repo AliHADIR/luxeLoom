@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Language, Product } from './types';
-import womenFragrances from '../Images/catalog/soft-florals.jpg';
-import menFragrances from '../Images/catalog/stone-bottle.jpg';
+import womenFragrances from '../Images/slide2.jpg';
+import menFragrances from '../Images/slide3.jpg';
 
 export const words = (language: Language, en: string, fr: string, ar: string) => language === 'fr' ? fr : language === 'ar' ? ar : en;
 export function perfumeDetails(product: Product) {
