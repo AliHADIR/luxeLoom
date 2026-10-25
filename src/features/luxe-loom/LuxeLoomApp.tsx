@@ -29,14 +29,17 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
-import { Product, CartItem, Category, Language, SellerInformation } from './types';
+import { Product, CartItem, Category, Language, SellerInformation, StoreOrder, OrderStatus } from './types';
 import { CATALOG_ADDITION_IDS, DEFAULT_SELLER_INFORMATION, FALLBACK_PRODUCT_IMAGE, INITIAL_PRODUCTS } from './constants';
 import { TRANSLATIONS } from './translations';
 import Fragranea from './Fragranea';
-import { downloadInventory, inventoryCsv } from './admin-tools';
+import { csvCell, downloadInventory, inventoryCsv } from './admin-tools';
 import FragranceStore from './FragranceStore';
 import { STOREFRONT_COPY } from './storefront-copy';
 import { words } from './StoreEnhancements';
+
+type StorePolicies = { delivery: Record<Language, string>; returns: Record<Language, string> };
+const EMPTY_POLICIES: StorePolicies = { delivery: { en: '', fr: '', ar: '' }, returns: { en: '', fr: '', ar: '' } };
 
 export default function App({ adminMode = false, informationMode = false }: { adminMode?: boolean; informationMode?: boolean }) {
   const [language, setLanguage] = useState<Language>('en');
@@ -47,6 +50,9 @@ export default function App({ adminMode = false, informationMode = false }: { ad
   const [sellerInformation, setSellerInformation] = useState<SellerInformation>(DEFAULT_SELLER_INFORMATION);
   
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [orders, setOrders] = useState<StoreOrder[]>([]);
+  const [storePolicies, setStorePolicies] = useState<StorePolicies>(EMPTY_POLICIES);
+  const [hasLoggedCheckout, setHasLoggedCheckout] = useState(false);
 
   const activeTab: 'store' | 'admin' = adminMode ? 'admin' : 'store';
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -83,6 +89,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       const savedProducts = localStorage.getItem('luxe_loom_products');
       const savedSellerInformation = localStorage.getItem('luxe_loom_seller_information');
       const savedCart = localStorage.getItem('luxe_loom_cart');
+      const savedOrders = localStorage.getItem('luxe_loom_orders');
+      const savedStorePolicies = localStorage.getItem('luxe_loom_store_policies');
 
       if (savedLanguage && ['en', 'fr', 'ar'].includes(savedLanguage)) setLanguage(savedLanguage);
       if (savedProducts) {
@@ -99,6 +107,17 @@ export default function App({ adminMode = false, informationMode = false }: { ad
       }
       if (savedSellerInformation) setSellerInformation({ ...DEFAULT_SELLER_INFORMATION, ...JSON.parse(savedSellerInformation) });
       if (savedCart) setCart(JSON.parse(savedCart));
+      if (savedOrders) {
+        const parsedOrders = JSON.parse(savedOrders);
+        if (Array.isArray(parsedOrders)) setOrders(parsedOrders);
+      }
+      if (savedStorePolicies) {
+        const parsedPolicies = JSON.parse(savedStorePolicies);
+        setStorePolicies({
+          delivery: { ...EMPTY_POLICIES.delivery, ...parsedPolicies.delivery },
+          returns: { ...EMPTY_POLICIES.returns, ...parsedPolicies.returns },
+        });
+      }
     } finally {
       setHasRestoredLocalState(true);
     }
@@ -121,9 +140,21 @@ export default function App({ adminMode = false, informationMode = false }: { ad
 
   useEffect(() => {
     if (!hasRestoredLocalState) return;
+    localStorage.setItem('luxe_loom_orders', JSON.stringify(orders));
+  }, [orders, hasRestoredLocalState]);
+
+  useEffect(() => {
+    if (!hasRestoredLocalState) return;
+    localStorage.setItem('luxe_loom_store_policies', JSON.stringify(storePolicies));
+  }, [storePolicies, hasRestoredLocalState]);
+
+  useEffect(() => setHasLoggedCheckout(false), [cart]);
+
+  useEffect(() => {
+    if (!hasRestoredLocalState) return;
     localStorage.setItem('luxe_loom_lang', language);
-    document.documentElement.dir = !informationMode && language === 'ar' ? 'rtl' : 'ltr';
-    document.documentElement.lang = informationMode ? 'fr' : language;
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = informationMode && language !== 'ar' ? 'fr' : language;
   }, [language, informationMode, hasRestoredLocalState]);
 
   useEffect(() => {
@@ -440,7 +471,7 @@ export default function App({ adminMode = false, informationMode = false }: { ad
 
       {/* Main Content */}
       <main className="pt-20">
-        {informationMode ? <Fragranea /> : activeTab === 'store' ? (
+        {informationMode ? <Fragranea language={language} /> : activeTab === 'store' ? (
           selectedProduct ? (
             <section className="max-w-7xl mx-auto px-5 py-8 sm:py-12">
               <button onClick={() => setSelectedProductId(null)} className="mb-8 inline-flex items-center gap-2 text-xs text-stone-500 hover:text-gold-700"><ArrowLeft className={`w-4 h-4 ${language === 'ar' ? 'rotate-180' : ''}`} />{t.product.back}</button>
@@ -476,7 +507,8 @@ export default function App({ adminMode = false, informationMode = false }: { ad
               onAddToCart={addToCart}
               onGuide={() => browseSection('guide-parfum')}
             />
-            <Fragranea embedded />
+            {(storePolicies.delivery[language] || storePolicies.returns[language]) && <aside className="max-w-7xl mx-auto px-5 pb-12 grid sm:grid-cols-2 gap-6">{storePolicies.delivery[language] && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Delivery', 'Livraison', 'التوصيل')}</h3><p className="text-sm text-stone-600">{storePolicies.delivery[language]}</p></div>}{storePolicies.returns[language] && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Returns', 'Retours', 'الإرجاع')}</h3><p className="text-sm text-stone-600">{storePolicies.returns[language]}</p></div>}</aside>}
+            <Fragranea embedded language={language} />
             </>
           )
         ) : (
@@ -603,6 +635,24 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                 </div>
               </div>
             </form>
+
+            <section className="bg-white rounded-lg shadow-sm border border-stone-200 p-4 sm:p-5 mb-6">
+              <h3 className="font-serif text-2xl font-bold">{words(language, 'Store content', 'Contenu de la boutique', 'محتوى المتجر')}</h3>
+              <p className="mt-1 mb-5 text-sm text-stone-500">{words(language, 'Edit delivery and returns information shown on the storefront. Changes save automatically in this browser.', 'Modifiez les informations de livraison et de retour affichées sur la boutique. Les changements sont enregistrés automatiquement dans ce navigateur.', 'عدّل معلومات التوصيل والإرجاع التي تظهر في المتجر. تُحفظ التغييرات تلقائياً في هذا المتصفح.')}</p>
+              <div className="grid lg:grid-cols-2 gap-6">{(['delivery', 'returns'] as const).map(key => <div key={key}>
+                <h4 className="font-bold mb-3">{key === 'delivery' ? words(language, 'Delivery policy', 'Livraison', 'سياسة التوصيل') : words(language, 'Returns policy', 'Retours', 'سياسة الإرجاع')}</h4>
+                {(['en', 'fr', 'ar'] as Language[]).map(locale => <label key={locale} className="block mb-3"><span className="block text-[10px] uppercase tracking-widest text-stone-400 mb-1">{locale.toUpperCase()}</span><textarea dir={locale === 'ar' ? 'rtl' : 'ltr'} rows={3} value={storePolicies[key][locale]} onChange={event => setStorePolicies(previous => ({ ...previous, [key]: { ...previous[key], [locale]: event.target.value } }))} placeholder={words(locale, 'Enter the text displayed on the storefront…', 'Saisissez le texte affiché sur la boutique…', 'اكتب النص الذي سيظهر في المتجر…')} className="w-full rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm" /></label>)}
+              </div>)}</div>
+            </section>
+
+            <section className="bg-white rounded-lg shadow-sm border border-stone-200 p-4 sm:p-5 mb-6">
+              <div className="flex flex-wrap justify-between items-center gap-4 mb-5"><div><h3 className="font-serif text-2xl font-bold">{words(language, 'Orders', 'Commandes', 'الطلبات')}</h3><p className="mt-1 text-sm text-stone-500">{words(language, 'Orders are recorded when a customer opens WhatsApp checkout.', 'Les commandes sont enregistrées lorsque le client ouvre le paiement WhatsApp.', 'تُسجل الطلبات عند انتقال العميل إلى إتمام الطلب عبر واتساب.')}</p></div><button disabled={orders.length === 0} onClick={() => { const rows: unknown[][] = [[ 'Order', 'Date', 'Customer', 'Phone', 'Address', 'Items', 'Total (MAD)', 'Status' ], ...orders.map(order => [order.id, order.createdAt, order.customer.name, order.customer.phone, `${order.customer.address}, ${order.customer.city}`, order.items.map(item => `${item.quantity}x ${item.name}`).join('; '), order.total, order.status])]; downloadInventory(`\uFEFF${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}`, `luxe-loom-orders-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8'); }} className="px-4 py-2 border border-stone-200 rounded-lg text-sm disabled:opacity-40">{words(language, 'Export orders (CSV)', 'Exporter les commandes (CSV)', 'تصدير الطلبات (CSV)')}</button></div>
+              {orders.length === 0 ? <p className="rounded-lg bg-stone-50 p-5 text-sm text-stone-500">{words(language, 'No orders have been recorded in this browser yet.', 'Aucune commande n’a encore été enregistrée dans ce navigateur.', 'لا توجد طلبات مسجلة في هذا المتصفح بعد.')}</p> : <div className="space-y-3">{orders.map(order => <article key={order.id} className="rounded-lg border border-stone-200 p-4">
+                <div className="flex flex-wrap justify-between gap-4"><div><p className="font-bold">{order.id} · {order.customer.name}</p><p className="text-xs text-stone-500 mt-1">{new Date(order.createdAt).toLocaleString(language === 'ar' ? 'ar-MA' : language === 'fr' ? 'fr-MA' : 'en-GB')} · {order.customer.phone}</p><p className="text-sm text-stone-600 mt-1">{order.customer.address}, {order.customer.city}</p>{order.customer.notes && <p className="text-sm text-stone-500 mt-1">{order.customer.notes}</p>}</div><div className="flex items-center gap-3"><strong>{order.total} {t.currency}</strong><select aria-label={`${words(language, 'Order status', 'Statut de la commande', 'حالة الطلب')} ${order.id}`} value={order.status} onChange={event => setOrders(previous => previous.map(item => item.id === order.id ? { ...item, status: event.target.value as OrderStatus } : item))} className="rounded-lg border border-stone-200 px-3 py-2 text-sm"><option value="New">{words(language, 'New', 'Nouvelle', 'جديد')}</option><option value="Confirmed">{words(language, 'Confirmed', 'Confirmée', 'مؤكدة')}</option><option value="Fulfilled">{words(language, 'Fulfilled', 'Terminée', 'مكتملة')}</option><option value="Cancelled">{words(language, 'Cancelled', 'Annulée', 'ملغاة')}</option></select></div></div>
+                <details className="mt-3 border-t border-stone-100 pt-3"><summary className="cursor-pointer text-sm">{words(language, 'Items', 'Articles', 'العناصر')}</summary><ul className="mt-2 space-y-1 text-sm text-stone-600">{order.items.map(item => <li key={item.id}>{item.quantity} × {item.name} — {item.price * item.quantity} {t.currency}</li>)}</ul></details>
+              </article>)}</div>}
+              <p className="mt-4 border-t border-stone-100 pt-3 text-xs text-stone-400">{words(language, 'Catalogue, orders and store content are saved in this browser only. They are not shared with other visitors or devices.', 'Le catalogue, les commandes et le contenu sont enregistrés dans ce navigateur uniquement. Ils ne sont pas partagés avec les autres appareils ou visiteurs.', 'يُحفظ الكتالوج والطلبات ومحتوى المتجر في هذا المتصفح فقط ولا تتم مشاركتها مع الزوار أو الأجهزة الأخرى.')}</p>
+            </section>
 
             <div className="bg-white rounded-lg shadow-sm border border-stone-200 overflow-hidden">
               <div className="p-4 sm:p-5 border-b border-stone-200 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
@@ -927,6 +977,23 @@ export default function App({ adminMode = false, informationMode = false }: { ad
                           onClick={(e) => {
                             if (!checkoutFormIsComplete) {
                               e.preventDefault();
+                            } else if (!hasLoggedCheckout) {
+                              const order: StoreOrder = {
+                                id: `FR-${Date.now().toString().slice(-8)}`,
+                                createdAt: new Date().toISOString(),
+                                customer: {
+                                  name: checkoutCustomer.name.trim(),
+                                  phone: checkoutCustomer.phone.trim(),
+                                  city: checkoutCustomer.city.trim(),
+                                  address: checkoutCustomer.address.trim(),
+                                  notes: checkoutCustomer.notes.trim(),
+                                },
+                                items: cart,
+                                total: cartTotal,
+                                status: 'New',
+                              };
+                              setOrders(previous => [order, ...previous]);
+                              setHasLoggedCheckout(true);
                             }
                           }}
                           className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${

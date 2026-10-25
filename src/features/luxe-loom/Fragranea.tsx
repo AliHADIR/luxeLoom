@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { ArrowUpRight, Download, FlaskConical, Atom, Fingerprint, Flower2, Leaf, Citrus, Trees, Flame, Wind, Sparkles, Check } from 'lucide-react';
 import Link from 'next/link';
+import type { Language } from './types';
 
 const families = [
   { name: 'Hespéridée', mood: 'Fraîche • Pétillante • Lumineuse', icon: Citrus, color: '#ae8938', text: "Pilier des Eaux de Cologne traditionnelles. Composée d’essences d’agrumes gorgées de soleil, cette famille apporte une envolée vivifiante et éclatante dès l’ouverture.", materials: 'Bergamote de Calabre, Citron d’Italie, Mandarine, Pamplemousse, Néroli.' },
@@ -19,7 +20,7 @@ const chapters = [
   { id: 'animaliques', number: '05', label: 'La signature de la peau', title: 'Notes animaliques & sensuelles', icon: Fingerprint, decorative: 'SENSUALIS', text: 'Les accords animaliques créent cette liaison charnelle intime entre le parfum et l’épiderme. Ils apportent une profondeur magnétique, un mystère instinctif et un pouvoir de fixation inégalé.', second: 'Recréés aujourd’hui avec éthique, les accords d’ambre gris, de castoréum, de muscs profonds et de bois de Oud fermenté forment la base des sillages les plus envoûtants du monde.', quote: 'Une touche animale donne à la fragrance sa pulsation de vie et son sillage inoubliable.' },
 ];
 
-export default function Fragranea({ embedded = false }: { embedded?: boolean }) {
+export default function Fragranea({ embedded = false, language = 'fr' }: { embedded?: boolean; language?: Language }) {
   const page = useRef<HTMLDivElement>(null);
   const [downloaded, setDownloaded] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
@@ -39,6 +40,32 @@ export default function Fragranea({ embedded = false }: { embedded?: boolean }) 
     link.href = url; link.download = 'information.html'; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setDownloaded(true);
+  }
+  if (language === 'ar') {
+    const arabicFamilies = [
+      ['حمضية', 'منعشة • مشرقة • حيوية', 'تبدأ بنفحات الحمضيات المتألقة التي تمنح العطر انتعاشاً ونوراً.', 'البرغموت، الليمون، اليوسفي، الجريب فروت، زهر النارنج.'],
+      ['زهرية', 'رومانسية • رقيقة • غنية', 'تحتفي هذه العائلة بتنوع الأزهار، من نفحة واحدة ناعمة إلى باقة آسرة.', 'الورد، الياسمين، مسك الروم، زهر البرتقال، السوسن.'],
+      ['فوغير', 'عطرية • دافئة • خضراء', 'تجمع بين الأعشاب المنعشة والقاعدة الدافئة، بإيحاء الغابات وصالونات الحلاقة الكلاسيكية.', 'الخزامى، طحلب البلوط، التونكا، إبرة الراعي، نجيل الهند.'],
+      ['شيبر', 'أنيقة • متباينة • راقية', 'توازن بين إشراقة البرغموت وعمق الأخشاب والتراب في قاعدة العطر.', 'البرغموت، اللابدانوم، الباتشولي، طحلب البلوط.'],
+      ['خشبية', 'نبيلة • عميقة • دافئة', 'تمنح العطر قواماً وعمقاً، من الأخشاب الجافة والمدخنة إلى النغمات الكريمية.', 'الأرز، خشب الصندل، العود، نجيل الهند، الغاياك.'],
+      ['شرقية وعنبرية', 'حسية • غامضة • دافئة', 'تلتقي التوابل والراتنجات والنغمات الحلوة لتترك أثراً آسراً على البشرة.', 'الفانيليا، التونكا، البنزوين، البخور، العنبر.'],
+      ['جلدية', 'جريئة • مدخنة • غنية', 'تستحضر رائحة الجلد المعتّق والتبغ والنار، بلمسة جريئة ومميزة.', 'الزعفران، الجلد المدبوغ، القطران، العرعر.'],
+    ];
+    const arabicChapters = [
+      ['جوهر الطبيعة', 'المواد الطبيعية والتقطير', 'يستخلص التقطير بالبخار والمذيبات جوهر الأزهار والجذور واللحاء لصناعة زيوت عطرية نقية.', 'تحوّل عملية التقطير النبات العابر إلى أثر عطري يدوم.'],
+      ['خيال العطّار', 'الجزيئات والنغمات الاصطناعية', 'تتيح الكيمياء الحديثة ابتكار نغمات لا تمنحها الطبيعة مباشرة، من النغمات البحرية إلى الفواكه الناضجة.', 'توسّع الجزيئات العطرية آفاق الإبداع وتمنح العطر ثباتاً وانتشاراً.'],
+      ['أثر البشرة', 'النغمات الحيوانية والحسية', 'تمنح نغمات المسك والعنبر عمقاً دافئاً وقريباً من البشرة، وتضيف إلى العطر طابعاً غامضاً.', 'تمنح اللمسة الحسية العطر نبضاً وأثراً لا يُنسى.'],
+    ];
+    return <div ref={page} id="guide-parfum" className={`fragranea ${embedded ? 'fr-embedded' : ''}`} lang="ar" dir="rtl">
+      <header className="fr-guide-header"><div><span className="fr-eyebrow">فراغانيا · دار للعطور</span><Heading>فن العطر <em>الاستثنائي</em></Heading><p>اكتشف عوالم العطور، وأسرار استخلاص المكونات، والإبداع الذي يصنع تركيبات لا تُنسى.</p></div></header>
+      <section className="fr-section"><div className="fr-section-heading"><span className="fr-eyebrow">٠١ · اكتشف</span><h2>عطور النيش أم عطور المصممين؟</h2><p>رؤيتان للفخامة: ابتكار خاص لعشاق التميز، وأيقونات خالدة من دور الأزياء الراقية.</p></div><div className="fr-visions">
+        <article className="fr-vision"><div className="fr-vision-top"><Flower2 size={26} strokeWidth={1.3} /><span>أناقة أيقونية</span></div><h3>عطور المصممين</h3><p>تقدمها دور الأزياء الراقية بتركيبات متناغمة وأثر عطري يسهل تمييزه.</p><ul><li>تركيبات متوازنة وأنيقة</li><li>مكونات فاخرة بلمسة يومية</li><li>قوارير أنيقة وتصاميم مميزة</li></ul></article>
+        <article className="fr-vision"><div className="fr-vision-top"><Sparkles size={26} strokeWidth={1.3} /><span>جرأة خالصة</span></div><h3>عطور النيش</h3><p>إبداعات حرة بمكونات استثنائية وتركيزات عالية وهوية لعشاق العطور.</p><ul><li>تركيز وثبات ملحوظان</li><li>مكونات نادرة مثل العود والورد والسوسن</li><li>إبداع بلا قيود</li></ul></article>
+      </div></section>
+      <section className="fr-section"><div className="fr-section-heading"><span className="fr-eyebrow">٠٢ · اعثر على ما يلائمك</span><h2>العائلات العطرية السبع</h2><p>افتح كل عائلة لتتعرف على طابعها وأبرز مكوناتها.</p></div><div className="fr-family-list">{arabicFamilies.map(([name, mood, text, materials], index) => <details className="fr-family" key={name}><summary><span className="fr-family-number">٠{index + 1}</span><span className="fr-family-title"><span>{name}</span><small>{mood}</small></span><span className="fr-expand" aria-hidden="true">+</span></summary><div className="fr-family-content"><p>{text}</p><p className="fr-materials"><strong>مكونات أساسية</strong> {materials}</p></div></details>)}</div></section>
+      <section className="fr-section"><div className="fr-section-heading"><span className="fr-eyebrow">٠٣ · أسرار التركيب</span><h2>من المكونات إلى الأثر العطري</h2><p>الطبيعة والعلم والحواس تجتمع في صناعة العطر.</p></div><div className="fr-chapter-grid">{arabicChapters.map(([label, title, text, quote]) => <article key={label} className="fr-chapter"><span className="fr-eyebrow">{label}</span><h3>{title}</h3><p>{text}</p><details><summary>اقرأ المزيد <span aria-hidden="true">+</span></summary><p>{quote}</p></details></article>)}</div></section>
+      <div className="fr-guide-end"><div><span className="fr-eyebrow">عطرك، قصتك</span><h2>اختر عطراً يعبّر عنك.</h2></div><Link href="/?category=Perfume#products">اكتشف العطور <ArrowUpRight size={18} /></Link></div>
+    </div>;
   }
   return <div ref={page} id="guide-parfum" className={`fragranea ${embedded ? 'fr-embedded' : ''}`} lang="fr" dir="ltr">
     <header className="fr-guide-header">

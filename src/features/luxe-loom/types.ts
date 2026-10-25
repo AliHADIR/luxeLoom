@@ -46,3 +46,14 @@ export interface SellerInformation {
   rib: string;
   iban: string;
 }
+
+export type OrderStatus = 'New' | 'Confirmed' | 'Fulfilled' | 'Cancelled';
+
+export interface StoreOrder {
+  id: string;
+  createdAt: string;
+  customer: { name: string; phone: string; city: string; address: string; notes: string };
+  items: CartItem[];
+  total: number;
+  status: OrderStatus;
+}
