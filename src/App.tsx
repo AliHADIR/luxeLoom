@@ -20,7 +20,7 @@ import {
   Copy
 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
-import { Product, CartItem, Category, Language, StoreOrder, OrderStatus } from './types';
+import { Product, CartItem, Category, DecantSizeMl, Language, StoreOrder, OrderStatus } from './types';
 import { CATALOG_ADDITIONS, INITIAL_PRODUCTS, LEGACY_CATALOG_IMAGES } from './constants';
 import { TRANSLATIONS } from './translations';
 import logo from '../Images/logo.jpg';
@@ -41,6 +41,21 @@ const LEGACY_SEED_IMAGES: Record<string, string> = {
 };
 type AdminSection = 'overview' | 'products' | 'orders' | 'content';
 type EditableStoreContent = { delivery: Record<Language, string>; returns: Record<Language, string> };
+
+const DECANT_SIZES: DecantSizeMl[] = [10, 15, 20];
+
+function bottleVolumeMl(product: Product) {
+  const volume = Number(product.size?.match(/\d+(?:\.\d+)?/)?.[0]);
+  return volume > 0 ? volume : 50;
+}
+
+function priceForDecant(product: Product, sizeMl: DecantSizeMl) {
+  return Math.max(1, Math.round(product.price * sizeMl / bottleVolumeMl(product)));
+}
+
+function cartItemKey(item: CartItem) {
+  return item.variantKey || `${item.id}:full`;
+}
 
 function readOrders(): StoreOrder[] {
   try {
@@ -102,7 +117,7 @@ function readCart(): CartItem[] {
     const parsed = JSON.parse(localStorage.getItem('luxe_loom_cart') || '[]');
     return Array.isArray(parsed) ? parsed.map((item: CartItem) => {
       const product = migrateProduct(item);
-      return product ? { ...product, quantity: item.quantity } : null;
+      return product ? { ...product, quantity: item.quantity, variantKey: item.variantKey || `${product.id}:full` } : null;
     }).filter((item: CartItem | null): item is CartItem => Boolean(item)) : [];
   } catch {
     return [];
@@ -134,6 +149,7 @@ export default function App() {
     const category = new URLSearchParams(window.location.search).get('category');
     return CATEGORIES.includes(category as Category) ? category as Category : 'All';
   });
+  const [selectedDecants, setSelectedDecants] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -243,26 +259,34 @@ export default function App() {
   }), [products, adminProductSearch, adminProductFilter]);
   const activeProducts = useMemo(() => products.filter(product => product.isActive !== false), [products]);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, decantMl?: DecantSizeMl) => {
+    const variantKey = `${product.id}:${decantMl ? `${decantMl}ml` : 'full'}`;
+    const cartProduct: CartItem = {
+      ...product,
+      price: decantMl ? priceForDecant(product, decantMl) : product.price,
+      decantMl,
+      variantKey,
+      quantity: 1,
+    };
     setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
+      const existing = prev.find(item => cartItemKey(item) === variantKey);
       if (existing) {
         return prev.map(item =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          cartItemKey(item) === variantKey ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, cartProduct];
     });
     setIsCartOpen(true);
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(item => item.id !== id));
+  const removeFromCart = (key: string) => {
+    setCart(prev => prev.filter(item => cartItemKey(item) !== key));
   };
 
-  const updateCartQuantity = (id: string, delta: number) => {
+  const updateCartQuantity = (key: string, delta: number) => {
     setCart(prev => prev.map(item => {
-      if (item.id === id) {
+      if (cartItemKey(item) === key) {
         const newQty = Math.max(1, item.quantity + delta);
         return { ...item, quantity: newQty };
       }
@@ -284,7 +308,9 @@ export default function App() {
     const latestProducts = readProducts();
     const unavailableItem = cart.find(item => {
       const product = latestProducts.find(current => current.id === item.id);
-      return !product || product.stock < item.quantity;
+      if (!product) return true;
+      const requestedMl = (item.decantMl || bottleVolumeMl(product)) * item.quantity;
+      return product.stock * bottleVolumeMl(product) < requestedMl;
     });
     if (unavailableItem) {
       setCheckoutError(words(
@@ -314,8 +340,10 @@ export default function App() {
     localStorage.setItem('luxe_loom_orders', JSON.stringify(updatedOrders));
     setOrders(updatedOrders);
     const updatedProducts = latestProducts.map(product => {
-      const orderedItem = cart.find(item => item.id === product.id);
-      return orderedItem ? { ...product, stock: product.stock - orderedItem.quantity } : product;
+      const consumedBottles = cart
+        .filter(item => item.id === product.id)
+        .reduce((total, item) => total + ((item.decantMl || bottleVolumeMl(product)) * item.quantity) / bottleVolumeMl(product), 0);
+      return consumedBottles ? { ...product, stock: Math.max(0, Number((product.stock - consumedBottles).toFixed(3))) } : product;
     });
     localStorage.setItem('luxe_loom_products', JSON.stringify(updatedProducts));
     setProducts(updatedProducts);
@@ -531,7 +559,12 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
                 <AnimatePresence mode="popLayout">
-                  {filteredProducts.map((product) => (
+                  {filteredProducts.map((product) => {
+                    const selectedSize = selectedDecants[product.id] || 'full';
+                    const decantMl = selectedSize === 'full' ? undefined : Number(selectedSize) as DecantSizeMl;
+                    const displayPrice = decantMl ? priceForDecant(product, decantMl) : product.price;
+                    const fullBottleVolume = bottleVolumeMl(product);
+                    return (
                     <motion.div
                       layout
                       key={product.id}
@@ -550,7 +583,7 @@ export default function App() {
                         {product.secondaryImage && <img src={product.secondaryImage} alt={`${product.name} — ${words(language, 'alternate view', 'autre vue', 'منظر آخر')}`} loading="lazy" className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-500" />}
                         <div className="absolute inset-0 bg-stone-900/0 group-hover:bg-stone-900/20 transition-colors duration-500" />
                         <button
-                          onClick={(e) => { e.stopPropagation(); addToCart(product); }}
+                          onClick={(e) => { e.stopPropagation(); addToCart(product, decantMl); }}
                           className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-stone-900 px-6 py-3 rounded-full font-medium shadow-xl opacity-100 translate-y-0 transition-all duration-300 hover:bg-gold-500 hover:text-white flex items-center gap-2"
                         >
                           <Plus className="w-4 h-4" /> {t.store.addToBag}
@@ -564,11 +597,23 @@ export default function App() {
                           <h4 className="text-lg font-serif font-bold mb-1 group-hover:text-gold-600 transition-colors">{product.name}</h4>
                           <p className="text-stone-500 text-sm line-clamp-1">{product.description}</p>
                           <p className="text-xs text-gold-700 mt-3">{[product.fragranceFamily || perfumeDetails(product)?.family, product.size].filter(Boolean).join(' · ')}</p>
+                          <label className="block mt-3 text-xs text-stone-500">
+                            <span className="block mb-1">{words(language, 'Choose a size', 'Choisir un format', 'اختر الحجم')}</span>
+                            <select
+                              value={selectedSize}
+                              onChange={event => setSelectedDecants(previous => ({ ...previous, [product.id]: event.target.value }))}
+                              className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-800"
+                            >
+                              <option value="full">{words(language, `Full bottle · ${fullBottleVolume} ml`, `Flacon · ${fullBottleVolume} ml`, `عبوة كاملة · ${fullBottleVolume} مل`)}</option>
+                              {DECANT_SIZES.map(size => <option key={size} value={size}>{words(language, `${size} ml decant`, `Décant ${size} ml`, `عينة ${size} مل`)}</option>)}
+                            </select>
+                          </label>
                         </div>
-                        <span className="text-lg font-medium">{product.price} {t.currency}</span>
+                        <span className="text-lg font-medium">{displayPrice} {t.currency}</span>
                       </div>
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </AnimatePresence>
               </div>
 
@@ -638,7 +683,7 @@ export default function App() {
               <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-stone-50 border-b border-stone-200"><tr><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.product}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.category}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.price}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.stock}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{words(language, 'Visibility', 'Visibilité', 'الظهور')}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400 text-right">{t.admin.table.actions}</th></tr></thead><tbody className="divide-y divide-stone-100">{managedProducts.map(product => <tr key={product.id} className="hover:bg-stone-50/50"><td className="px-5 py-4"><div className="flex items-center gap-3"><img src={product.image} alt="" className="w-12 h-12 rounded-lg object-cover" /><div><p className="font-bold">{product.name}</p><p className="text-xs text-stone-500 max-w-[220px] truncate">{product.description}</p></div></div></td><td className="px-5 py-4">{t.category[categoryKeys[product.category]]}</td><td className="px-5 py-4">{product.price} {t.currency}</td><td className="px-5 py-4"><span className={product.stock <= 5 ? 'text-orange-700 font-semibold' : ''}>{product.stock} {t.admin.table.units}</span></td><td className="px-5 py-4">{product.isActive === false ? words(language, 'Hidden', 'Masqué', 'مخفي') : words(language, 'Live', 'En ligne', 'ظاهر')}</td><td className="px-5 py-4"><div className="flex justify-end gap-1"><button title={words(language, 'Edit', 'Modifier', 'تعديل')} onClick={() => setEditingProduct(product)} className="p-2 hover:bg-stone-100 rounded-lg"><Edit2 className="w-4 h-4" /></button><button title={product.isActive === false ? words(language, 'Publish', 'Publier', 'نشر') : words(language, 'Hide', 'Masquer', 'إخفاء')} onClick={() => setProducts(previous => previous.map(item => item.id === product.id ? { ...item, isActive: item.isActive === false } : item))} className="p-2 hover:bg-stone-100 rounded-lg">{product.isActive === false ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}</button><button title={words(language, 'Duplicate', 'Dupliquer', 'نسخ')} onClick={() => setProducts(previous => [{ ...product, id: Date.now().toString(), name: `${product.name} (${words(language, 'Copy', 'Copie', 'نسخة')})`, isActive: false }, ...previous])} className="p-2 hover:bg-stone-100 rounded-lg"><Copy className="w-4 h-4" /></button><button title={words(language, 'Delete', 'Supprimer', 'حذف')} onClick={() => deleteProduct(product.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button></div></td></tr>)}</tbody></table>{managedProducts.length === 0 && <p className="text-center py-12 text-stone-500">{words(language, 'No matching products.', 'Aucun produit correspondant.', 'لا توجد منتجات مطابقة.')}</p>}</div></div>
             </div>}
 
-            {adminSection === 'orders' && <div className="space-y-4"><div className="flex justify-end"><button onClick={() => exportCsv('fragranea-orders.csv', [[words(language, 'Order', 'Commande', 'الطلب'), words(language, 'Date', 'Date', 'التاريخ'), words(language, 'Customer', 'Client', 'العميل'), words(language, 'Phone', 'Téléphone', 'الهاتف'), words(language, 'Address', 'Adresse', 'العنوان'), words(language, 'Total', 'Total', 'الإجمالي'), words(language, 'Status', 'Statut', 'الحالة')], ...orders.map(order => [order.id, order.createdAt, order.customer.name, order.customer.phone, `${order.customer.address}, ${order.customer.city}`, String(order.total), order.status])])} className="px-4 py-2.5 rounded-xl border border-stone-200 bg-white">{words(language, 'Export orders CSV', 'Exporter les commandes CSV', 'تصدير الطلبات CSV')}</button></div>{orders.length ? orders.map(order => <article key={order.id} className="bg-white border border-stone-200 rounded-2xl p-5"><div className="flex flex-wrap justify-between gap-4"><div><p className="font-bold">{order.id} · {order.customer.name}</p><p className="text-sm text-stone-500">{new Date(order.createdAt).toLocaleString()} · {order.customer.phone}</p><p className="text-sm text-stone-500">{order.customer.address}, {order.customer.city}</p></div><div className="flex items-center gap-4"><strong>{order.total} {t.currency}</strong><select value={order.status} onChange={event => updateOrderStatus(order.id, event.target.value as OrderStatus)} className="rounded-lg border border-stone-200 px-3 py-2"><option value="New">{words(language, 'New', 'Nouvelle', 'جديد')}</option><option value="Confirmed">{words(language, 'Confirmed', 'Confirmée', 'مؤكدة')}</option><option value="Fulfilled">{words(language, 'Fulfilled', 'Terminée', 'مكتملة')}</option><option value="Cancelled">{words(language, 'Cancelled', 'Annulée', 'ملغاة')}</option></select></div></div><details className="mt-4 border-t border-stone-100 pt-3"><summary className="cursor-pointer text-sm">{words(language, 'Order items', 'Articles commandés', 'عناصر الطلب')}</summary><ul className="mt-3 space-y-1 text-sm text-stone-600">{order.items.map(item => <li key={item.id}>{item.quantity} × {item.name} — {item.price * item.quantity} {t.currency}</li>)}</ul></details></article>) : <div className="bg-white border border-stone-200 rounded-2xl p-10 text-center text-stone-500">{words(language, 'No orders yet. Orders submitted on this browser will be listed here.', 'Aucune commande. Les commandes passées sur cet appareil seront affichées ici.', 'لا توجد طلبات بعد. ستظهر هنا الطلبات التي يتم إرسالها من هذا الجهاز.')}</div>}</div>}
+            {adminSection === 'orders' && <div className="space-y-4"><div className="flex justify-end"><button onClick={() => exportCsv('fragranea-orders.csv', [[words(language, 'Order', 'Commande', 'الطلب'), words(language, 'Date', 'Date', 'التاريخ'), words(language, 'Customer', 'Client', 'العميل'), words(language, 'Phone', 'Téléphone', 'الهاتف'), words(language, 'Address', 'Adresse', 'العنوان'), words(language, 'Total', 'Total', 'الإجمالي'), words(language, 'Status', 'Statut', 'الحالة')], ...orders.map(order => [order.id, order.createdAt, order.customer.name, order.customer.phone, `${order.customer.address}, ${order.customer.city}`, String(order.total), order.status])])} className="px-4 py-2.5 rounded-xl border border-stone-200 bg-white">{words(language, 'Export orders CSV', 'Exporter les commandes CSV', 'تصدير الطلبات CSV')}</button></div>{orders.length ? orders.map(order => <article key={order.id} className="bg-white border border-stone-200 rounded-2xl p-5"><div className="flex flex-wrap justify-between gap-4"><div><p className="font-bold">{order.id} · {order.customer.name}</p><p className="text-sm text-stone-500">{new Date(order.createdAt).toLocaleString()} · {order.customer.phone}</p><p className="text-sm text-stone-500">{order.customer.address}, {order.customer.city}</p></div><div className="flex items-center gap-4"><strong>{order.total} {t.currency}</strong><select value={order.status} onChange={event => updateOrderStatus(order.id, event.target.value as OrderStatus)} className="rounded-lg border border-stone-200 px-3 py-2"><option value="New">{words(language, 'New', 'Nouvelle', 'جديد')}</option><option value="Confirmed">{words(language, 'Confirmed', 'Confirmée', 'مؤكدة')}</option><option value="Fulfilled">{words(language, 'Fulfilled', 'Terminée', 'مكتملة')}</option><option value="Cancelled">{words(language, 'Cancelled', 'Annulée', 'ملغاة')}</option></select></div></div><details className="mt-4 border-t border-stone-100 pt-3"><summary className="cursor-pointer text-sm">{words(language, 'Order items', 'Articles commandés', 'عناصر الطلب')}</summary><ul className="mt-3 space-y-1 text-sm text-stone-600">{order.items.map(item => <li key={`${item.id}:${item.decantMl || 'full'}`}>{item.quantity} × {item.name}{item.decantMl ? ` · ${item.decantMl} ml decant` : ` · ${bottleVolumeMl(item)} ml`} — {item.price * item.quantity} {t.currency}</li>)}</ul></details></article>) : <div className="bg-white border border-stone-200 rounded-2xl p-10 text-center text-stone-500">{words(language, 'No orders yet. Orders submitted on this browser will be listed here.', 'Aucune commande. Les commandes passées sur cet appareil seront affichées ici.', 'لا توجد طلبات بعد. ستظهر هنا الطلبات التي يتم إرسالها من هذا الجهاز.')}</div>}</div>}
 
             {adminSection === 'content' && <div className="bg-white border border-stone-200 rounded-2xl p-6 md:p-8"><div className="mb-7"><h3 className="text-2xl font-serif font-bold">{words(language, 'Store policies', 'Informations de la boutique', 'سياسات المتجر')}</h3><p className="text-sm text-stone-500 mt-2">{words(language, 'Edit delivery and returns copy for each storefront language. Changes save automatically on this browser.', 'Modifiez les textes de livraison et de retour pour chaque langue. Les modifications sont enregistrées automatiquement sur cet appareil.', 'عدّل نصوص التوصيل والإرجاع لكل لغة. تُحفظ التغييرات تلقائياً على هذا الجهاز.')}</p></div><div className="grid lg:grid-cols-2 gap-8">{(['delivery', 'returns'] as const).map(key => <section key={key}><h4 className="font-bold mb-4">{key === 'delivery' ? words(language, 'Delivery information', 'Livraison', 'معلومات التوصيل') : words(language, 'Returns information', 'Retours', 'معلومات الإرجاع')}</h4>{(['en', 'fr', 'ar'] as Language[]).map(locale => <label key={locale} className="block mb-4"><span className="block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{locale.toUpperCase()}</span><textarea dir={locale === 'ar' ? 'rtl' : 'ltr'} rows={4} value={storeContent[key][locale]} onChange={event => setStoreContent(previous => ({ ...previous, [key]: { ...previous[key], [locale]: event.target.value } }))} placeholder={words(locale, 'Add the policy text shown on your storefront…', 'Saisissez le texte affiché sur la boutique…', 'أدخل النص الذي سيظهر في المتجر…')} className="w-full rounded-xl border border-stone-200 p-3" /></label>)}</section>)}</div><p className="text-xs text-stone-400 border-t border-stone-100 pt-4">{words(language, 'Catalog, orders and store content are currently saved in this browser only.', 'Le catalogue, les commandes et le contenu sont enregistrés uniquement dans ce navigateur.', 'يتم حفظ الكتالوج والطلبات ومحتوى المتجر في هذا المتصفح فقط حالياً.')}</p></div>}
           </div>
@@ -684,23 +729,23 @@ export default function App() {
                   </div>
                 ) : (
                   cart.map(item => (
-                    <div key={item.id} className="flex gap-4">
+                    <div key={cartItemKey(item)} className="flex gap-4">
                       <img src={item.image} alt="" className="cart-product-thumb w-24 h-32 object-cover rounded-xl" referrerPolicy="no-referrer" />
                       <div className="flex-1 flex flex-col justify-between py-1">
                         <div>
                           <div className="flex justify-between items-start">
                             <h4 className="font-bold text-stone-900">{item.name}</h4>
-                            <button onClick={() => removeFromCart(item.id)} className="text-stone-400 hover:text-red-500">
+                            <button onClick={() => removeFromCart(cartItemKey(item))} className="text-stone-400 hover:text-red-500">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                          <p className="text-sm text-stone-500">{t.category[categoryKeys[item.category]]}</p>
+                          <p className="text-sm text-stone-500">{t.category[categoryKeys[item.category]]} · {item.decantMl ? `${item.decantMl} ml decant` : `${bottleVolumeMl(item)} ml`}</p>
                         </div>
                         <div className="flex justify-between items-center">
                           <div className="flex items-center border border-stone-200 rounded-full px-2 py-1">
-                            <button onClick={() => updateCartQuantity(item.id, -1)} className="p-1 hover:text-gold-600">-</button>
+                            <button onClick={() => updateCartQuantity(cartItemKey(item), -1)} className="p-1 hover:text-gold-600">-</button>
                             <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                            <button onClick={() => updateCartQuantity(item.id, 1)} className="p-1 hover:text-gold-600">+</button>
+                            <button onClick={() => updateCartQuantity(cartItemKey(item), 1)} className="p-1 hover:text-gold-600">+</button>
                           </div>
                           <span className="font-bold">{item.price * item.quantity} {t.currency}</span>
                         </div>
@@ -884,6 +929,7 @@ export default function App() {
                       <input
                         name="stock"
                         type="number"
+                        step="0.01"
                         required
                         defaultValue={editingProduct?.stock}
                         className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
