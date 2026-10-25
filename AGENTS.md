@@ -1,15 +1,29 @@
-# Fragranea storefront
+# perfume-web
 
-This is a Vite app using React, TypeScript, Tailwind CSS 4, and pnpm.
+Next.js app using Next.js 16.2.9, React 19, TypeScript, App Router, Tailwind CSS 4, ESLint, and pnpm.
 
 ## Commands
 
+- Install dependencies with `pnpm install`.
 - Start development with `pnpm dev`.
 - Build production output with `pnpm build`.
-- Run TypeScript checks with `pnpm lint`.
+- Start a production build with `pnpm start`.
+- Lint with `pnpm lint`.
 
-## Project notes
+## Project Notes
 
-- Keep Vite entry points in `src/main.tsx` and `src/App.tsx`.
-- Vercel serves the Vite build and the serverless admin authentication endpoint in `api/`.
-- Do not add `package-lock.json`; use pnpm.
+- Use `pnpm` only. Do not add `package-lock.json` or use npm/yarn for dependency changes.
+- App Router files live under `src/app`.
+- Keep route UI and colocated route code inside `src/app` unless shared across routes.
+- Use TypeScript for application code.
+- Keep Tailwind CSS v4 conventions; global styles are in `src/app/globals.css`.
+- `pnpm-workspace.yaml` approves the `sharp` and `unrs-resolver` build scripts needed by the current dependency tree.
+
+## Verification
+
+Before handing off web changes, run:
+
+```bash
+pnpm lint
+pnpm build
+```

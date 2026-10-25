@@ -1,0 +1,59 @@
+export type Category = 'Perfume' | 'Clothing';
+export type Language = 'en' | 'fr' | 'ar';
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: Category;
+  image: string;
+  stock: number;
+  sku?: string;
+  brand?: string;
+  updatedAt?: string;
+  secondaryImage?: string;
+  fragranceFamily?: string;
+  size?: string;
+  details?: {
+    brand?: string;
+    concentration?: string;
+    collection?: 'Niche' | 'Designer';
+    format?: 'Full bottle' | 'Discovery set';
+    occasions?: string[];
+    notes?: string[];
+    scentFamily?: string;
+    topNotes?: string[];
+    heartNotes?: string[];
+    baseNotes?: string[];
+    materials?: string[];
+    material?: string;
+    color?: string;
+    volume?: string;
+    size?: string;
+    delivery?: string;
+  };
+}
+
+export interface CartItem extends Product {
+  quantity: number;
+}
+
+export interface SellerInformation {
+  whatsapp: string;
+  bankName: string;
+  accountHolder: string;
+  rib: string;
+  iban: string;
+}
+
+export type OrderStatus = 'New' | 'Confirmed' | 'Fulfilled' | 'Cancelled';
+
+export interface StoreOrder {
+  id: string;
+  createdAt: string;
+  customer: { name: string; phone: string; city: string; address: string; notes: string };
+  items: CartItem[];
+  total: number;
+  status: OrderStatus;
+}

@@ -1,6 +1,0 @@
-{
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(?:admin(?:/.*)?|information(?:\\.html)?/?)", "dest": "/index.html" }
-  ]
-}
