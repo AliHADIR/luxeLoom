@@ -20,14 +20,14 @@ import {
   Copy
 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
-import { Product, CartItem, Category, Language, StoreOrder, OrderStatus } from './types';
-import { CATALOG_ADDITIONS, INITIAL_PRODUCTS } from './constants';
+import { Product, CartItem, Category, DecantSizeMl, Language, StoreOrder, OrderStatus } from './types';
+import { CATALOG_ADDITIONS, INITIAL_PRODUCTS, LEGACY_CATALOG_IMAGES } from './constants';
 import { TRANSLATIONS } from './translations';
 import logo from '../Images/logo.jpg';
 import heroImage from '../Images/slide1.jpg';
 import mobileHeroImage from '../Images/catalog/soft-florals.jpg';
 import Fragranea from './Fragranea';
-import { Signature, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
+import { CollectionSpotlight, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
 import { STORE_DETAILS } from './storeDetails';
 
 const CATEGORIES: Category[] = ['Homme', 'Femme', 'Niche'];
@@ -41,6 +41,20 @@ const LEGACY_SEED_IMAGES: Record<string, string> = {
 };
 type AdminSection = 'overview' | 'products' | 'orders' | 'content';
 type EditableStoreContent = { delivery: Record<Language, string>; returns: Record<Language, string> };
+
+
+function bottleVolumeMl(product: Product) {
+  const volume = Number(product.size?.match(/\d+(?:\.\d+)?/)?.[0]);
+  return volume > 0 ? volume : 50;
+}
+
+function priceForDecant(product: Product, sizeMl: DecantSizeMl) {
+  return Math.max(1, Math.round(product.price * sizeMl / bottleVolumeMl(product)));
+}
+
+function cartItemKey(item: CartItem) {
+  return item.variantKey || `${item.id}:full`;
+}
 
 function readOrders(): StoreOrder[] {
   try {
@@ -64,16 +78,28 @@ function readStoreContent(): EditableStoreContent {
 function migrateProduct(product: Product): Product | null {
   if (!product || String(product.category) === 'Clothing') return null;
   const seed = INITIAL_PRODUCTS.find(item => item.id === product.id);
-  const hasLegacySeedImage = Boolean(seed && product.image?.includes(LEGACY_SEED_IMAGES[product.id]));
-  const migratedImage = hasLegacySeedImage ? seed?.image : product.image;
-  if (CATEGORIES.includes(product.category)) return { ...product, image: migratedImage || product.image };
+  const migrateImage = (image?: string) => {
+    if (!image) return image;
+    if (product.id === '6' && seed && /homme-noir(?:-[^/.]+)?\.jpg/.test(image)) return seed.image;
+    if (product.id === '1' && seed && /(?:soft-florals|slide3)(?:-[^/.]+)?\.jpg/.test(image)) return seed.image;
+    if (seed && LEGACY_SEED_IMAGES[product.id] && image.includes(LEGACY_SEED_IMAGES[product.id])) return seed.image;
+    const localPath = image.split(/[?#]/)[0];
+    const isLegacyLocalAsset = /^(?:\/catalog\/|\/Images\/|Images\/|\.\/Images\/)/.test(localPath);
+    const legacyFilename = localPath.split('/').pop() || '';
+    return isLegacyLocalAsset ? LEGACY_CATALOG_IMAGES[legacyFilename] || image : image;
+  };
+  const isCollectionImage = /(?:slide2|slide3)(?:-[^/.]+)?\.jpg/.test(product.image || '');
+  const restoreProductImage = seed && product.id !== '1' && isCollectionImage;
+  const migratedImage = restoreProductImage ? seed.image : migrateImage(product.image) || product.image;
+  const migratedSecondaryImage = migrateImage(product.secondaryImage);
+  if (CATEGORIES.includes(product.category)) return { ...product, image: migratedImage, secondaryImage: migratedSecondaryImage };
   const name = `${product.name || ''} ${product.description || ''}`.toLowerCase();
   const category: Category = /women|woman|femme|rose|floral|jasmine|velvet/.test(name)
     ? 'Femme'
     : /men|man|homme|masculine|foug[eè]re/.test(name)
       ? 'Homme'
       : 'Niche';
-  return { ...product, category, image: migratedImage || product.image };
+  return { ...product, category, image: migratedImage, secondaryImage: migratedSecondaryImage };
 }
 
 function readProducts(): Product[] {
@@ -94,7 +120,7 @@ function readCart(): CartItem[] {
     const parsed = JSON.parse(localStorage.getItem('luxe_loom_cart') || '[]');
     return Array.isArray(parsed) ? parsed.map((item: CartItem) => {
       const product = migrateProduct(item);
-      return product ? { ...product, quantity: item.quantity } : null;
+      return product ? { ...product, quantity: item.quantity, variantKey: item.variantKey || `${product.id}:full` } : null;
     }).filter((item: CartItem | null): item is CartItem => Boolean(item)) : [];
   } catch {
     return [];
@@ -133,10 +159,14 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isOrderComplete, setIsOrderComplete] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
 
   // Persist data
   useEffect(() => {
-    localStorage.setItem('luxe_loom_products', JSON.stringify(products));
+    const nextValue = JSON.stringify(products);
+    if (localStorage.getItem('luxe_loom_products') !== nextValue) {
+      localStorage.setItem('luxe_loom_products', nextValue);
+    }
   }, [products]);
 
   useEffect(() => {
@@ -144,8 +174,31 @@ export default function App() {
   }, [cart]);
 
   useEffect(() => {
-    localStorage.setItem('luxe_loom_orders', JSON.stringify(orders));
+    const nextValue = JSON.stringify(orders);
+    if (localStorage.getItem('luxe_loom_orders') !== nextValue) {
+      localStorage.setItem('luxe_loom_orders', nextValue);
+    }
   }, [orders]);
+
+  useEffect(() => {
+    const syncStoreData = (event: StorageEvent) => {
+      if (!event.newValue) return;
+      try {
+        if (event.key === 'luxe_loom_products') {
+          const nextProducts = JSON.parse(event.newValue);
+          if (Array.isArray(nextProducts)) setProducts(nextProducts);
+        }
+        if (event.key === 'luxe_loom_orders') {
+          const nextOrders = JSON.parse(event.newValue);
+          if (Array.isArray(nextOrders)) setOrders(nextOrders);
+        }
+      } catch {
+        // Ignore invalid data from another browser tab.
+      }
+    };
+    window.addEventListener('storage', syncStoreData);
+    return () => window.removeEventListener('storage', syncStoreData);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('luxe_loom_store_content', JSON.stringify(storeContent));
@@ -198,6 +251,9 @@ export default function App() {
       const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            p.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
+    }).sort((a, b) => {
+      const priority = (product: Product) => product.id === '6' ? 0 : product.id === '1' ? 1 : 2;
+      return priority(a) - priority(b);
     });
   }, [products, selectedCategory, searchQuery]);
 
@@ -208,26 +264,35 @@ export default function App() {
   }), [products, adminProductSearch, adminProductFilter]);
   const activeProducts = useMemo(() => products.filter(product => product.isActive !== false), [products]);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, decantMl?: DecantSizeMl) => {
+    if (product.isGiftSet) decantMl = undefined;
+    const variantKey = `${product.id}:${decantMl ? `${decantMl}ml` : 'full'}`;
+    const cartProduct: CartItem = {
+      ...product,
+      price: decantMl ? priceForDecant(product, decantMl) : product.price,
+      decantMl,
+      variantKey,
+      quantity: 1,
+    };
     setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
+      const existing = prev.find(item => cartItemKey(item) === variantKey);
       if (existing) {
         return prev.map(item =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          cartItemKey(item) === variantKey ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, cartProduct];
     });
     setIsCartOpen(true);
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(item => item.id !== id));
+  const removeFromCart = (key: string) => {
+    setCart(prev => prev.filter(item => cartItemKey(item) !== key));
   };
 
-  const updateCartQuantity = (id: string, delta: number) => {
+  const updateCartQuantity = (key: string, delta: number) => {
     setCart(prev => prev.map(item => {
-      if (item.id === id) {
+      if (cartItemKey(item) === key) {
         const newQty = Math.max(1, item.quantity + delta);
         return { ...item, quantity: newQty };
       }
@@ -240,11 +305,29 @@ export default function App() {
   const openCheckout = () => {
     setIsCartOpen(false);
     setIsOrderComplete(false);
+    setCheckoutError('');
     setIsCheckoutOpen(true);
   };
 
   const handleCheckout = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const latestProducts = readProducts();
+    const unavailableItem = cart.find(item => {
+      const product = latestProducts.find(current => current.id === item.id);
+      if (!product) return true;
+      const requestedMl = (item.decantMl || bottleVolumeMl(product)) * item.quantity;
+      return product.stock * bottleVolumeMl(product) < requestedMl;
+    });
+    if (unavailableItem) {
+      setCheckoutError(words(
+        language,
+        `${unavailableItem.name} no longer has enough stock. Update your bag and try again.`,
+        `Le stock de ${unavailableItem.name} est insuffisant. Modifiez votre panier et réessayez.`,
+        `الكمية المتاحة من ${unavailableItem.name} غير كافية. حدّث سلتك ثم أعد المحاولة.`,
+      ));
+      return;
+    }
+
     const form = new FormData(e.currentTarget);
     const order: StoreOrder = {
       id: `FR-${Date.now().toString().slice(-8)}`,
@@ -259,8 +342,19 @@ export default function App() {
       total: cartTotal,
       status: 'New',
     };
-    setOrders(previous => [order, ...previous]);
+    const updatedOrders = [order, ...readOrders()];
+    localStorage.setItem('luxe_loom_orders', JSON.stringify(updatedOrders));
+    setOrders(updatedOrders);
+    const updatedProducts = latestProducts.map(product => {
+      const consumedBottles = cart
+        .filter(item => item.id === product.id)
+        .reduce((total, item) => total + ((item.decantMl || bottleVolumeMl(product)) * item.quantity) / bottleVolumeMl(product), 0);
+      return consumedBottles ? { ...product, stock: Math.max(0, Number((product.stock - consumedBottles).toFixed(3))) } : product;
+    });
+    localStorage.setItem('luxe_loom_products', JSON.stringify(updatedProducts));
+    setProducts(updatedProducts);
     setCart([]);
+    setCheckoutError('');
     setIsOrderComplete(true);
   };
 
@@ -278,6 +372,7 @@ export default function App() {
       secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       fragranceFamily: String(formData.get('fragranceFamily') || '').trim() || undefined,
       size: String(formData.get('size') || '').trim() || undefined,
+      isGiftSet: formData.get('isGiftSet') === 'on',
     };
     setProducts(prev => [newProduct, ...prev]);
     setShowAddModal(false);
@@ -298,6 +393,7 @@ export default function App() {
       secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       fragranceFamily: String(formData.get('fragranceFamily') || '').trim() || undefined,
       size: String(formData.get('size') || '').trim() || undefined,
+      isGiftSet: formData.get('isGiftSet') === 'on',
     };
     setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
     setEditingProduct(null);
@@ -322,9 +418,9 @@ export default function App() {
     setSearchQuery('');
     setIsMobileMenuOpen(false);
     if (isInformationRoute) {
-      window.location.href = `/?category=${encodeURIComponent(category)}#products`;
+      window.location.href = `/?category=${encodeURIComponent(category)}#${category === 'Niche' ? 'products' : 'collections'}`;
     } else {
-      document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
+      window.requestAnimationFrame(() => document.getElementById(category === 'Niche' ? 'products' : 'collections')?.scrollIntoView({ behavior: 'smooth' }));
     }
   };
 
@@ -443,8 +539,7 @@ export default function App() {
               </div>
             </section>
 
-            <Signature products={activeProducts} language={language} discover={product => { setSelectedCategory(product.category); setSearchQuery(product.name); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
-            <ScentFinder products={activeProducts} language={language} discover={product => { setSelectedCategory(product.category); setSearchQuery(product.name); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
+            <CollectionSpotlight language={language} selectedCategory={selectedCategory} browse={category => { setSelectedCategory(category); setSearchQuery(''); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
             {/* Products Grid */}
             <section id="products" className="store-catalog max-w-7xl mx-auto px-4 py-24">
               <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
@@ -471,7 +566,8 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
                 <AnimatePresence mode="popLayout">
-                  {filteredProducts.map((product) => (
+                  {filteredProducts.map((product) => {
+                    return (
                     <motion.div
                       layout
                       key={product.id}
@@ -495,6 +591,7 @@ export default function App() {
                         >
                           <Plus className="w-4 h-4" /> {t.store.addToBag}
                         </button>
+                        {product.isGiftSet && <span className="absolute top-4 left-4 bg-stone-900 text-white px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase">{words(language, 'Gift set', 'Coffret', 'طقم هدايا')}</span>}
                         <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold tracking-widest text-stone-900 uppercase">
                           {t.category[categoryKeys[product.category]]}
                         </div>
@@ -504,11 +601,13 @@ export default function App() {
                           <h4 className="text-lg font-serif font-bold mb-1 group-hover:text-gold-600 transition-colors">{product.name}</h4>
                           <p className="text-stone-500 text-sm line-clamp-1">{product.description}</p>
                           <p className="text-xs text-gold-700 mt-3">{[product.fragranceFamily || perfumeDetails(product)?.family, product.size].filter(Boolean).join(' · ')}</p>
+                          {product.isGiftSet && <p className="mt-3 text-xs text-stone-500">{words(language, 'Complete gift set · Gift box included', 'Coffret complet · Boîte cadeau incluse', 'طقم كامل · يشمل علبة هدايا')}</p>}
                         </div>
                         <span className="text-lg font-medium">{product.price} {t.currency}</span>
                       </div>
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </AnimatePresence>
               </div>
 
@@ -520,6 +619,7 @@ export default function App() {
                 </div>
               )}
             </section>
+            <ScentFinder products={activeProducts} language={language} discover={product => { setSelectedCategory(product.category); setSearchQuery(product.name); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
             {(storeContent.delivery[language] || storeContent.returns[language]) && <aside className="max-w-7xl mx-auto px-4 pb-12 grid sm:grid-cols-2 gap-6">{storeContent.delivery[language] && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Delivery', 'Livraison', 'التوصيل')}</h3><p className="text-sm text-stone-600">{storeContent.delivery[language]}</p></div>}{storeContent.returns[language] && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Returns', 'Retours', 'الإرجاع')}</h3><p className="text-sm text-stone-600">{storeContent.returns[language]}</p></div>}</aside>}
             {STORE_DETAILS.reviews.length > 0 && <section className="lux-reveal max-w-7xl mx-auto px-4 py-16"><h2 className="font-serif text-4xl mb-10">{words(language, 'From our customers', 'Les mots de nos clients', 'آراء عملائنا')}</h2><div className="grid md:grid-cols-3 gap-8">{STORE_DETAILS.reviews.map(review => <figure key={review.id} className="bg-white border border-gold-200 rounded-2xl p-8"><blockquote className="font-serif text-xl leading-relaxed mb-6">“{review.quote[language]}”</blockquote><figcaption className="text-sm text-stone-500">{review.author}</figcaption></figure>)}</div></section>}
             <BrandStory language={language} />
@@ -578,7 +678,7 @@ export default function App() {
               <div className="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-stone-50 border-b border-stone-200"><tr><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.product}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.category}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.price}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{t.admin.table.stock}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400">{words(language, 'Visibility', 'Visibilité', 'الظهور')}</th><th className="px-5 py-4 text-xs uppercase tracking-widest text-stone-400 text-right">{t.admin.table.actions}</th></tr></thead><tbody className="divide-y divide-stone-100">{managedProducts.map(product => <tr key={product.id} className="hover:bg-stone-50/50"><td className="px-5 py-4"><div className="flex items-center gap-3"><img src={product.image} alt="" className="w-12 h-12 rounded-lg object-cover" /><div><p className="font-bold">{product.name}</p><p className="text-xs text-stone-500 max-w-[220px] truncate">{product.description}</p></div></div></td><td className="px-5 py-4">{t.category[categoryKeys[product.category]]}</td><td className="px-5 py-4">{product.price} {t.currency}</td><td className="px-5 py-4"><span className={product.stock <= 5 ? 'text-orange-700 font-semibold' : ''}>{product.stock} {t.admin.table.units}</span></td><td className="px-5 py-4">{product.isActive === false ? words(language, 'Hidden', 'Masqué', 'مخفي') : words(language, 'Live', 'En ligne', 'ظاهر')}</td><td className="px-5 py-4"><div className="flex justify-end gap-1"><button title={words(language, 'Edit', 'Modifier', 'تعديل')} onClick={() => setEditingProduct(product)} className="p-2 hover:bg-stone-100 rounded-lg"><Edit2 className="w-4 h-4" /></button><button title={product.isActive === false ? words(language, 'Publish', 'Publier', 'نشر') : words(language, 'Hide', 'Masquer', 'إخفاء')} onClick={() => setProducts(previous => previous.map(item => item.id === product.id ? { ...item, isActive: item.isActive === false } : item))} className="p-2 hover:bg-stone-100 rounded-lg">{product.isActive === false ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}</button><button title={words(language, 'Duplicate', 'Dupliquer', 'نسخ')} onClick={() => setProducts(previous => [{ ...product, id: Date.now().toString(), name: `${product.name} (${words(language, 'Copy', 'Copie', 'نسخة')})`, isActive: false }, ...previous])} className="p-2 hover:bg-stone-100 rounded-lg"><Copy className="w-4 h-4" /></button><button title={words(language, 'Delete', 'Supprimer', 'حذف')} onClick={() => deleteProduct(product.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button></div></td></tr>)}</tbody></table>{managedProducts.length === 0 && <p className="text-center py-12 text-stone-500">{words(language, 'No matching products.', 'Aucun produit correspondant.', 'لا توجد منتجات مطابقة.')}</p>}</div></div>
             </div>}
 
-            {adminSection === 'orders' && <div className="space-y-4"><div className="flex justify-end"><button onClick={() => exportCsv('fragranea-orders.csv', [[words(language, 'Order', 'Commande', 'الطلب'), words(language, 'Date', 'Date', 'التاريخ'), words(language, 'Customer', 'Client', 'العميل'), words(language, 'Phone', 'Téléphone', 'الهاتف'), words(language, 'Address', 'Adresse', 'العنوان'), words(language, 'Total', 'Total', 'الإجمالي'), words(language, 'Status', 'Statut', 'الحالة')], ...orders.map(order => [order.id, order.createdAt, order.customer.name, order.customer.phone, `${order.customer.address}, ${order.customer.city}`, String(order.total), order.status])])} className="px-4 py-2.5 rounded-xl border border-stone-200 bg-white">{words(language, 'Export orders CSV', 'Exporter les commandes CSV', 'تصدير الطلبات CSV')}</button></div>{orders.length ? orders.map(order => <article key={order.id} className="bg-white border border-stone-200 rounded-2xl p-5"><div className="flex flex-wrap justify-between gap-4"><div><p className="font-bold">{order.id} · {order.customer.name}</p><p className="text-sm text-stone-500">{new Date(order.createdAt).toLocaleString()} · {order.customer.phone}</p><p className="text-sm text-stone-500">{order.customer.address}, {order.customer.city}</p></div><div className="flex items-center gap-4"><strong>{order.total} {t.currency}</strong><select value={order.status} onChange={event => updateOrderStatus(order.id, event.target.value as OrderStatus)} className="rounded-lg border border-stone-200 px-3 py-2"><option value="New">{words(language, 'New', 'Nouvelle', 'جديد')}</option><option value="Confirmed">{words(language, 'Confirmed', 'Confirmée', 'مؤكدة')}</option><option value="Fulfilled">{words(language, 'Fulfilled', 'Terminée', 'مكتملة')}</option><option value="Cancelled">{words(language, 'Cancelled', 'Annulée', 'ملغاة')}</option></select></div></div><details className="mt-4 border-t border-stone-100 pt-3"><summary className="cursor-pointer text-sm">{words(language, 'Order items', 'Articles commandés', 'عناصر الطلب')}</summary><ul className="mt-3 space-y-1 text-sm text-stone-600">{order.items.map(item => <li key={item.id}>{item.quantity} × {item.name} — {item.price * item.quantity} {t.currency}</li>)}</ul></details></article>) : <div className="bg-white border border-stone-200 rounded-2xl p-10 text-center text-stone-500">{words(language, 'No orders yet. Orders submitted on this browser will be listed here.', 'Aucune commande. Les commandes passées sur cet appareil seront affichées ici.', 'لا توجد طلبات بعد. ستظهر هنا الطلبات التي يتم إرسالها من هذا الجهاز.')}</div>}</div>}
+            {adminSection === 'orders' && <div className="space-y-4"><div className="flex justify-end"><button onClick={() => exportCsv('fragranea-orders.csv', [[words(language, 'Order', 'Commande', 'الطلب'), words(language, 'Date', 'Date', 'التاريخ'), words(language, 'Customer', 'Client', 'العميل'), words(language, 'Phone', 'Téléphone', 'الهاتف'), words(language, 'Address', 'Adresse', 'العنوان'), words(language, 'Total', 'Total', 'الإجمالي'), words(language, 'Status', 'Statut', 'الحالة')], ...orders.map(order => [order.id, order.createdAt, order.customer.name, order.customer.phone, `${order.customer.address}, ${order.customer.city}`, String(order.total), order.status])])} className="px-4 py-2.5 rounded-xl border border-stone-200 bg-white">{words(language, 'Export orders CSV', 'Exporter les commandes CSV', 'تصدير الطلبات CSV')}</button></div>{orders.length ? orders.map(order => <article key={order.id} className="bg-white border border-stone-200 rounded-2xl p-5"><div className="flex flex-wrap justify-between gap-4"><div><p className="font-bold">{order.id} · {order.customer.name}</p><p className="text-sm text-stone-500">{new Date(order.createdAt).toLocaleString()} · {order.customer.phone}</p><p className="text-sm text-stone-500">{order.customer.address}, {order.customer.city}</p></div><div className="flex items-center gap-4"><strong>{order.total} {t.currency}</strong><select value={order.status} onChange={event => updateOrderStatus(order.id, event.target.value as OrderStatus)} className="rounded-lg border border-stone-200 px-3 py-2"><option value="New">{words(language, 'New', 'Nouvelle', 'جديد')}</option><option value="Confirmed">{words(language, 'Confirmed', 'Confirmée', 'مؤكدة')}</option><option value="Fulfilled">{words(language, 'Fulfilled', 'Terminée', 'مكتملة')}</option><option value="Cancelled">{words(language, 'Cancelled', 'Annulée', 'ملغاة')}</option></select></div></div><details className="mt-4 border-t border-stone-100 pt-3"><summary className="cursor-pointer text-sm">{words(language, 'Order items', 'Articles commandés', 'عناصر الطلب')}</summary><ul className="mt-3 space-y-1 text-sm text-stone-600">{order.items.map(item => <li key={`${item.id}:${item.decantMl || 'full'}`}>{item.quantity} × {item.name}{item.decantMl ? ` · ${item.decantMl} ml decant` : ` · ${bottleVolumeMl(item)} ml`} — {item.price * item.quantity} {t.currency}</li>)}</ul></details></article>) : <div className="bg-white border border-stone-200 rounded-2xl p-10 text-center text-stone-500">{words(language, 'No orders yet. Orders submitted on this browser will be listed here.', 'Aucune commande. Les commandes passées sur cet appareil seront affichées ici.', 'لا توجد طلبات بعد. ستظهر هنا الطلبات التي يتم إرسالها من هذا الجهاز.')}</div>}</div>}
 
             {adminSection === 'content' && <div className="bg-white border border-stone-200 rounded-2xl p-6 md:p-8"><div className="mb-7"><h3 className="text-2xl font-serif font-bold">{words(language, 'Store policies', 'Informations de la boutique', 'سياسات المتجر')}</h3><p className="text-sm text-stone-500 mt-2">{words(language, 'Edit delivery and returns copy for each storefront language. Changes save automatically on this browser.', 'Modifiez les textes de livraison et de retour pour chaque langue. Les modifications sont enregistrées automatiquement sur cet appareil.', 'عدّل نصوص التوصيل والإرجاع لكل لغة. تُحفظ التغييرات تلقائياً على هذا الجهاز.')}</p></div><div className="grid lg:grid-cols-2 gap-8">{(['delivery', 'returns'] as const).map(key => <section key={key}><h4 className="font-bold mb-4">{key === 'delivery' ? words(language, 'Delivery information', 'Livraison', 'معلومات التوصيل') : words(language, 'Returns information', 'Retours', 'معلومات الإرجاع')}</h4>{(['en', 'fr', 'ar'] as Language[]).map(locale => <label key={locale} className="block mb-4"><span className="block text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{locale.toUpperCase()}</span><textarea dir={locale === 'ar' ? 'rtl' : 'ltr'} rows={4} value={storeContent[key][locale]} onChange={event => setStoreContent(previous => ({ ...previous, [key]: { ...previous[key], [locale]: event.target.value } }))} placeholder={words(locale, 'Add the policy text shown on your storefront…', 'Saisissez le texte affiché sur la boutique…', 'أدخل النص الذي سيظهر في المتجر…')} className="w-full rounded-xl border border-stone-200 p-3" /></label>)}</section>)}</div><p className="text-xs text-stone-400 border-t border-stone-100 pt-4">{words(language, 'Catalog, orders and store content are currently saved in this browser only.', 'Le catalogue, les commandes et le contenu sont enregistrés uniquement dans ce navigateur.', 'يتم حفظ الكتالوج والطلبات ومحتوى المتجر في هذا المتصفح فقط حالياً.')}</p></div>}
           </div>
@@ -624,23 +724,23 @@ export default function App() {
                   </div>
                 ) : (
                   cart.map(item => (
-                    <div key={item.id} className="flex gap-4">
+                    <div key={cartItemKey(item)} className="flex gap-4">
                       <img src={item.image} alt="" className="cart-product-thumb w-24 h-32 object-cover rounded-xl" referrerPolicy="no-referrer" />
                       <div className="flex-1 flex flex-col justify-between py-1">
                         <div>
                           <div className="flex justify-between items-start">
                             <h4 className="font-bold text-stone-900">{item.name}</h4>
-                            <button onClick={() => removeFromCart(item.id)} className="text-stone-400 hover:text-red-500">
+                            <button onClick={() => removeFromCart(cartItemKey(item))} className="text-stone-400 hover:text-red-500">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                          <p className="text-sm text-stone-500">{t.category[categoryKeys[item.category]]}</p>
+                          <p className="text-sm text-stone-500">{t.category[categoryKeys[item.category]]} · {item.decantMl ? `${item.decantMl} ml decant` : `${bottleVolumeMl(item)} ml`}</p>
                         </div>
                         <div className="flex justify-between items-center">
                           <div className="flex items-center border border-stone-200 rounded-full px-2 py-1">
-                            <button onClick={() => updateCartQuantity(item.id, -1)} className="p-1 hover:text-gold-600">-</button>
+                            <button onClick={() => updateCartQuantity(cartItemKey(item), -1)} className="p-1 hover:text-gold-600">-</button>
                             <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                            <button onClick={() => updateCartQuantity(item.id, 1)} className="p-1 hover:text-gold-600">+</button>
+                            <button onClick={() => updateCartQuantity(cartItemKey(item), 1)} className="p-1 hover:text-gold-600">+</button>
                           </div>
                           <span className="font-bold">{item.price * item.quantity} {t.currency}</span>
                         </div>
@@ -748,6 +848,7 @@ export default function App() {
                       <span>{t.cart.total}</span>
                       <span>{cartTotal} {t.currency}</span>
                     </div>
+                    {checkoutError && <p className="text-red-600 text-sm" role="alert">{checkoutError}</p>}
                     <button type="submit" className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-gold-600 transition-colors shadow-lg">
                       {t.checkout.placeOrder}
                     </button>
@@ -823,6 +924,7 @@ export default function App() {
                       <input
                         name="stock"
                         type="number"
+                        step="0.01"
                         required
                         defaultValue={editingProduct?.stock}
                         className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
@@ -850,10 +952,17 @@ export default function App() {
                       />
                     </div>
                   </div>
+                  <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 cursor-pointer">
+                    <input name="isGiftSet" type="checkbox" defaultChecked={editingProduct?.isGiftSet ?? false} className="mt-1 h-4 w-4 accent-stone-900" />
+                    <span>
+                      <span className="block text-sm font-medium text-stone-900">{words(language, 'Coffret / gift set', 'Coffret cadeau', 'طقم هدايا')}</span>
+                      <span className="block mt-1 text-xs text-stone-500">{words(language, 'Sell as a complete set, with a gift-set badge and no decant sizes. Choose Homme or Femme above and enter the contents below (e.g. 50 ml + 10 ml).', 'Vendu en coffret complet, avec un badge Coffret et sans formats décants. Choisissez Homme ou Femme ci-dessus et précisez le contenu ci-dessous (ex. 50 ml + 10 ml).', 'يُباع كطقم كامل مع شارة هدايا وبدون أحجام عينات. اختر رجالي أو نسائي أعلاه وأدخل المحتويات أدناه (مثلاً 50 مل + 10 مل).')}</span>
+                    </span>
+                  </label>
                   <div className="grid sm:grid-cols-2 gap-4">{([
                     ['secondaryImage', words(language, 'Second image URL', 'URL de la seconde image', 'رابط الصورة الثانية')],
                     ['fragranceFamily', words(language, 'Fragrance family', 'Famille olfactive', 'العائلة العطرية')],
-                    ['size', words(language, 'Size (e.g. 50 ml)', 'Contenance (ex. 50 ml)', 'الحجم (مثلاً 50 مل)')],
+                    ['size', words(language, 'Size / set contents (e.g. 50 ml + 10 ml)', 'Contenance / contenu du coffret (ex. 50 ml + 10 ml)', 'الحجم / محتويات الطقم (مثلاً 50 مل + 10 مل)')],
                   ] as const).map(([field, label]) => <label key={field} className="text-xs text-stone-500">{label}<input name={field} type={field === 'secondaryImage' ? 'url' : 'text'} defaultValue={editingProduct?.[field]} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>)}</div>
                   <button className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-gold-600 transition-colors shadow-lg mt-4">
                     {editingProduct ? t.admin.modal.save : t.admin.modal.create}

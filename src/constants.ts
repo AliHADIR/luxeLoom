@@ -1,13 +1,27 @@
 import { Product } from './types';
-import midnightBloomImage from '../Images/catalog/soft-florals.jpg';
+import coffretHommeImage from '../Images/catalog/coffret-homme.svg';
+import coffretFemmeImage from '../Images/catalog/coffret-femme.svg';
+import midnightBloomImage from '../Images/slide2.jpg';
 import oudNoirImage from '../Images/catalog/stone-bottle.jpg';
 import velvetRoseImage from '../Images/catalog/femme-dried-florals.jpg';
-import hommeNoirImage from '../Images/catalog/homme-noir.jpg';
+import hommeNoirImage from '../Images/slide3.jpg';
 import blackBottleImage from '../Images/catalog/black-bottle.jpg';
 import roseImage from '../Images/catalog/femme-roses.jpg';
 import flowerBottleImage from '../Images/catalog/flower-bottle.jpg';
 import amberImage from '../Images/catalog/amber-noir.jpg';
 import nicheOudImage from '../Images/catalog/niche-oud.jpg';
+
+export const LEGACY_CATALOG_IMAGES: Record<string, string> = {
+  'soft-florals.jpg': midnightBloomImage,
+  'stone-bottle.jpg': oudNoirImage,
+  'femme-dried-florals.jpg': velvetRoseImage,
+  'homme-noir.jpg': hommeNoirImage,
+  'black-bottle.jpg': blackBottleImage,
+  'femme-roses.jpg': roseImage,
+  'flower-bottle.jpg': flowerBottleImage,
+  'amber-noir.jpg': amberImage,
+  'niche-oud.jpg': nicheOudImage,
+};
 
 const BASE_PRODUCTS: Product[] = [
   {
@@ -40,6 +54,8 @@ const BASE_PRODUCTS: Product[] = [
 ];
 
 export const CATALOG_ADDITIONS: Product[] = [
+  { id: 'coffret-homme', name: 'Coffret Homme · Atlas Vetiver', description: 'A woody aromatic gift set with Atlas Vetiver eau de parfum (50 ml) and a matching travel spray (10 ml), presented in a gift box.', price: 195, category: 'Homme', image: coffretHommeImage, stock: 10, fragranceFamily: 'Woody aromatic', size: '50 ml + 10 ml', isGiftSet: true },
+  { id: 'coffret-femme', name: 'Coffret Femme · Rose Éclat', description: 'A floral gift set with Rose Éclat eau de parfum (50 ml) and a matching travel spray (10 ml), presented in a gift box.', price: 160, category: 'Femme', image: coffretFemmeImage, stock: 10, fragranceFamily: 'Floral', size: '50 ml + 10 ml', isGiftSet: true },
   { id: '6', name: 'Atlas Vetiver', description: 'Crisp bergamot and aromatic vetiver settle into a refined cedarwood base.', price: 145, category: 'Homme', image: hommeNoirImage, stock: 12, fragranceFamily: 'Woody aromatic', size: '50 ml' },
   { id: '7', name: 'Cedar Coast', description: 'Fresh citrus and sea air meet smooth cedar and warm amber.', price: 130, category: 'Homme', image: blackBottleImage, stock: 14, fragranceFamily: 'Fresh woody', size: '50 ml' },
   { id: '8', name: 'Rose Éclat', description: 'Velvety rose petals brighten a graceful blend of musk and soft woods.', price: 110, category: 'Femme', image: roseImage, stock: 16, fragranceFamily: 'Floral', size: '50 ml' },

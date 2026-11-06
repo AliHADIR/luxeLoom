@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { Language, Product } from './types';
-import womenFragrances from '../Images/catalog/soft-florals.jpg';
-import menFragrances from '../Images/catalog/stone-bottle.jpg';
+import { Category, Language, Product } from './types';
+import womenFragrances from '../Images/slide2.jpg';
+import menFragrances from '../Images/slide3.jpg';
 
 export const words = (language: Language, en: string, fr: string, ar: string) => language === 'fr' ? fr : language === 'ar' ? ar : en;
 export function perfumeDetails(product: Product) {
@@ -12,14 +12,23 @@ export function perfumeDetails(product: Product) {
   return { notes, family };
 }
 
-export function Signature({ products, language, discover }: { products: Product[]; language: Language; discover: (product: Product) => void }) {
-  const product = products.find(p => p.stock > 0);
-  if (!product) return null;
-  const details = perfumeDetails(product);
-  const category = language === 'ar' ? ({ Homme: 'رجالي', Femme: 'نسائي', Niche: 'نيش' } as const)[product.category] : product.category;
-  return <section className="lux-reveal max-w-7xl mx-auto px-4 py-20 md:py-28 grid md:grid-cols-2 gap-10 md:gap-20 items-center">
-    <div className="signature-image-frame relative aspect-[4/5] overflow-hidden bg-stone-100"><img src={product.image} alt={product.name} loading="lazy" className="signature-image w-full h-full object-cover" /><span className="signature-image-caption absolute bottom-6 left-6 px-5 py-3 text-xs tracking-widest uppercase">Fragranea · {category}</span></div>
-    <div><p className="text-xs tracking-[.25em] uppercase text-gold-700 mb-5">{words(language, 'The fragrance spotlight', 'Le parfum à l’honneur', 'عطر تحت الأضواء')}</p><h2 className="font-serif text-5xl md:text-6xl leading-tight mb-6">{product.name}</h2><p className="text-stone-500 leading-relaxed max-w-md mb-8">{product.description}</p><div className="flex flex-wrap gap-3 mb-10">{details?.notes.map(note => <span key={note} className="border border-gold-200 rounded-full px-5 py-2 text-sm capitalize">{note}</span>)}</div><p className="text-xl mb-6">{product.price} MAD</p><button onClick={() => discover(product)} className="inline-flex items-center gap-4 bg-stone-900 text-white rounded-full px-8 py-4 hover:bg-gold-700 transition-colors">{words(language, 'Discover', 'Découvrir', 'اكتشف')} <ArrowRight size={18} /></button></div>
+export function CollectionSpotlight({ language, selectedCategory, browse }: { language: Language; selectedCategory: Category | 'All'; browse: (category: 'Homme' | 'Femme') => void }) {
+  const collections = [
+    { category: 'Femme' as const, image: womenFragrances, title: words(language, 'For women', 'Pour femme', 'للنساء'), cta: words(language, 'Discover women’s fragrances', 'Découvrir les parfums femme', 'اكتشف العطور النسائية') },
+    { category: 'Homme' as const, image: menFragrances, title: words(language, 'For men', 'Pour homme', 'للرجال'), cta: words(language, 'Discover men’s fragrances', 'Découvrir les parfums homme', 'اكتشف العطور الرجالية') },
+  ];
+  const visibleCollections = selectedCategory === 'All' ? collections : collections.filter(collection => collection.category === selectedCategory);
+  if (!visibleCollections.length) return null;
+  return <section id="collections" aria-label={words(language, 'Explore our collections', 'Explorez nos collections', 'اكتشف مجموعاتنا')} className={`scroll-mt-28 max-w-7xl mx-auto px-4 pt-16 grid gap-6 ${visibleCollections.length === 2 ? 'md:grid-cols-2' : ''}`}>
+    {visibleCollections.map(collection => <article key={collection.category} className={`group relative overflow-hidden bg-stone-900 ${visibleCollections.length === 2 ? 'aspect-[4/5] md:aspect-[5/6]' : 'h-[60vh] min-h-[400px] max-h-[680px]'}`}>
+      <img src={collection.image} alt={collection.title} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+      <div className="absolute bottom-0 inset-x-0 p-7 md:p-12 text-white">
+        <p className="text-xs uppercase tracking-[.3em] mb-4">Fragranea</p>
+        <h2 className="font-serif text-4xl md:text-6xl mb-6">{collection.title}</h2>
+        <button onClick={() => browse(collection.category)} className="inline-flex items-center gap-4 text-sm border-b border-white/70 pb-2 hover:text-amber-200 transition-colors">{words(language, 'Discover the collection', 'Découvrir la collection', 'اكتشف المجموعة')} <ArrowRight size={18} /></button>
+      </div>
+    </article>)}
   </section>;
 }
 

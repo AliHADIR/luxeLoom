@@ -10,13 +10,18 @@ export interface Product {
   image: string;
   stock: number;
   secondaryImage?: string;
+  isGiftSet?: boolean;
   fragranceFamily?: string;
   size?: string;
   isActive?: boolean;
 }
 
+export type DecantSizeMl = 10 | 15 | 20;
+
 export interface CartItem extends Product {
   quantity: number;
+  decantMl?: DecantSizeMl;
+  variantKey?: string;
 }
 
 export type OrderStatus = 'New' | 'Confirmed' | 'Fulfilled' | 'Cancelled';
