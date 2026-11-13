@@ -27,7 +27,7 @@ import logo from '../Images/logo.jpg';
 import heroImage from '../Images/slide1.jpg';
 import mobileHeroImage from '../Images/catalog/soft-florals.jpg';
 import Fragranea from './Fragranea';
-import { Signature, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
+import { CollectionSpotlight, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
 import { STORE_DETAILS } from './storeDetails';
 
 const CATEGORIES: Category[] = ['Homme', 'Femme', 'Niche'];
@@ -531,7 +531,7 @@ export default function App() {
               </div>
             </section>
 
-            <Signature products={activeProducts} language={language} discover={product => { setSelectedCategory(product.category); setSearchQuery(product.name); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
+            <CollectionSpotlight language={language} selectedCategory={selectedCategory} browse={browseCollection} />
             <ScentFinder products={activeProducts} language={language} discover={product => { setSelectedCategory(product.category); setSearchQuery(product.name); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
             {/* Products Grid */}
             <section id="products" className="store-catalog max-w-7xl mx-auto px-4 py-24">

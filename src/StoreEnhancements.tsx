@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { Language, Product } from './types';
+import { Category, Language, Product } from './types';
 import womenFragrances from '../Images/slide2.jpg';
 import menFragrances from '../Images/slide3.jpg';
+import menCollectionBanner from '../Images/men-collection-v2.png';
 
 export const words = (language: Language, en: string, fr: string, ar: string) => language === 'fr' ? fr : language === 'ar' ? ar : en;
 export function perfumeDetails(product: Product) {
@@ -12,14 +13,24 @@ export function perfumeDetails(product: Product) {
   return { notes, family };
 }
 
-export function Signature({ products, language, discover }: { products: Product[]; language: Language; discover: (product: Product) => void }) {
-  const product = products.find(p => p.stock > 0);
-  if (!product) return null;
-  const details = perfumeDetails(product);
-  const category = language === 'ar' ? ({ Homme: 'رجالي', Femme: 'نسائي', Niche: 'نيش' } as const)[product.category] : product.category;
-  return <section className="lux-reveal max-w-7xl mx-auto px-4 py-20 md:py-28 grid md:grid-cols-2 gap-10 md:gap-20 items-center">
-    <div className="signature-image-frame relative aspect-[4/5] overflow-hidden bg-stone-100"><img src={product.image} alt={product.name} loading="lazy" className="signature-image w-full h-full object-cover" /><span className="signature-image-caption absolute bottom-6 left-6 px-5 py-3 text-xs tracking-widest uppercase">Fragranea · {category}</span></div>
-    <div><p className="text-xs tracking-[.25em] uppercase text-gold-700 mb-5">{words(language, 'The fragrance spotlight', 'Le parfum à l’honneur', 'عطر تحت الأضواء')}</p><h2 className="font-serif text-5xl md:text-6xl leading-tight mb-6">{product.name}</h2><p className="text-stone-500 leading-relaxed max-w-md mb-8">{product.description}</p><div className="flex flex-wrap gap-3 mb-10">{details?.notes.map(note => <span key={note} className="border border-gold-200 rounded-full px-5 py-2 text-sm capitalize">{note}</span>)}</div><p className="text-xl mb-6">{product.price} MAD</p><button onClick={() => discover(product)} className="inline-flex items-center gap-4 bg-stone-900 text-white rounded-full px-8 py-4 hover:bg-gold-700 transition-colors">{words(language, 'Discover', 'Découvrir', 'اكتشف')} <ArrowRight size={18} /></button></div>
+export function CollectionSpotlight({ language, selectedCategory, browse }: { language: Language; selectedCategory: Category | 'All'; browse: (category: 'Homme' | 'Femme') => void }) {
+  const collections = [
+    { category: 'Femme' as const, image: womenFragrances, title: words(language, 'For women', 'Pour femme', 'للنساء'), cta: words(language, 'Discover women’s fragrances', 'Découvrir les parfums femme', 'اكتشف العطور النسائية') },
+    { category: 'Homme' as const, image: menCollectionBanner, title: words(language, 'For men', 'Pour homme', 'للرجال'), cta: words(language, 'Discover men’s fragrances', 'Découvrir les parfums homme', 'اكتشف العطور الرجالية') },
+  ];
+  const visibleCollections = selectedCategory === 'All' ? collections : collections.filter(collection => collection.category === selectedCategory);
+  if (!visibleCollections.length) return null;
+  return <section id="collections" aria-label={words(language, 'Explore our collections', 'Explorez nos collections', 'اكتشف مجموعاتنا')} className={`scroll-mt-28 max-w-7xl mx-auto px-4 pt-16 grid gap-6 ${visibleCollections.length === 2 ? 'md:grid-cols-2' : ''}`}>
+    {visibleCollections.map(collection => <article key={collection.category} className={`overflow-hidden rounded-2xl border border-white/10 bg-[#210b10] shadow-sm ${visibleCollections.length === 1 ? 'grid md:grid-cols-2' : ''}`}>
+      <div className="h-[280px] sm:h-[340px] md:h-[360px] bg-[#190408]">
+        <img src={collection.image} alt={collection.title} loading="lazy" className="block w-full h-full object-contain" />
+      </div>
+      <div className={`p-6 md:p-8 text-white ${visibleCollections.length === 1 ? 'flex flex-col items-start justify-center' : ''}`}>
+        <p className="text-[10px] uppercase tracking-[.3em] text-[#d8b77b] mb-3">Fragranea</p>
+        <h2 className="font-serif text-3xl md:text-4xl mb-5">{collection.title}</h2>
+        <button onClick={() => browse(collection.category)} className="inline-flex items-center gap-4 text-sm border-b border-[#d8b77b]/60 pb-2 hover:text-amber-200 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200">{words(language, 'Discover the collection', 'Découvrir la collection', 'اكتشف المجموعة')} <ArrowRight size={18} /></button>
+      </div>
+    </article>)}
   </section>;
 }
 
