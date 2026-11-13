@@ -42,7 +42,6 @@ const LEGACY_SEED_IMAGES: Record<string, string> = {
 type AdminSection = 'overview' | 'products' | 'orders' | 'content';
 type EditableStoreContent = { delivery: Record<Language, string>; returns: Record<Language, string> };
 
-const DECANT_SIZES: DecantSizeMl[] = [10, 15, 20];
 
 function bottleVolumeMl(product: Product) {
   const volume = Number(product.size?.match(/\d+(?:\.\d+)?/)?.[0]);
@@ -149,7 +148,6 @@ export default function App() {
     const category = new URLSearchParams(window.location.search).get('category');
     return CATEGORIES.includes(category as Category) ? category as Category : 'All';
   });
-  const [selectedDecants, setSelectedDecants] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -560,10 +558,6 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-16">
                 <AnimatePresence mode="popLayout">
                   {filteredProducts.map((product) => {
-                    const selectedSize = selectedDecants[product.id] || 'full';
-                    const decantMl = selectedSize === 'full' ? undefined : Number(selectedSize) as DecantSizeMl;
-                    const displayPrice = decantMl ? priceForDecant(product, decantMl) : product.price;
-                    const fullBottleVolume = bottleVolumeMl(product);
                     return (
                     <motion.div
                       layout
@@ -583,7 +577,7 @@ export default function App() {
                         {product.secondaryImage && <img src={product.secondaryImage} alt={`${product.name} — ${words(language, 'alternate view', 'autre vue', 'منظر آخر')}`} loading="lazy" className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-500" />}
                         <div className="absolute inset-0 bg-stone-900/0 group-hover:bg-stone-900/20 transition-colors duration-500" />
                         <button
-                          onClick={(e) => { e.stopPropagation(); addToCart(product, decantMl); }}
+                          onClick={(e) => { e.stopPropagation(); addToCart(product); }}
                           className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white text-stone-900 px-6 py-3 rounded-full font-medium shadow-xl opacity-100 translate-y-0 transition-all duration-300 hover:bg-gold-500 hover:text-white flex items-center gap-2"
                         >
                           <Plus className="w-4 h-4" /> {t.store.addToBag}
@@ -597,19 +591,8 @@ export default function App() {
                           <h4 className="text-lg font-serif font-bold mb-1 group-hover:text-gold-600 transition-colors">{product.name}</h4>
                           <p className="text-stone-500 text-sm line-clamp-1">{product.description}</p>
                           <p className="text-xs text-gold-700 mt-3">{[product.fragranceFamily || perfumeDetails(product)?.family, product.size].filter(Boolean).join(' · ')}</p>
-                          <label className="block mt-3 text-xs text-stone-500">
-                            <span className="block mb-1">{words(language, 'Choose a size', 'Choisir un format', 'اختر الحجم')}</span>
-                            <select
-                              value={selectedSize}
-                              onChange={event => setSelectedDecants(previous => ({ ...previous, [product.id]: event.target.value }))}
-                              className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-800"
-                            >
-                              <option value="full">{words(language, `Full bottle · ${fullBottleVolume} ml`, `Flacon · ${fullBottleVolume} ml`, `عبوة كاملة · ${fullBottleVolume} مل`)}</option>
-                              {DECANT_SIZES.map(size => <option key={size} value={size}>{words(language, `${size} ml decant`, `Décant ${size} ml`, `عينة ${size} مل`)}</option>)}
-                            </select>
-                          </label>
                         </div>
-                        <span className="text-lg font-medium">{displayPrice} {t.currency}</span>
+                        <span className="text-lg font-medium">{product.price} {t.currency}</span>
                       </div>
                     </motion.div>
                     );
