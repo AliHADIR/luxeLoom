@@ -10,6 +10,7 @@ export interface Product {
   image: string;
   stock: number;
   secondaryImage?: string;
+  isGiftSet?: boolean;
   fragranceFamily?: string;
   size?: string;
   isActive?: boolean;

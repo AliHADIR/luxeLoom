@@ -80,13 +80,17 @@ function migrateProduct(product: Product): Product | null {
   const seed = INITIAL_PRODUCTS.find(item => item.id === product.id);
   const migrateImage = (image?: string) => {
     if (!image) return image;
+    if (product.id === '6' && seed && /homme-noir(?:-[^/.]+)?\.jpg/.test(image)) return seed.image;
+    if (product.id === '1' && seed && /(?:soft-florals|slide3)(?:-[^/.]+)?\.jpg/.test(image)) return seed.image;
     if (seed && LEGACY_SEED_IMAGES[product.id] && image.includes(LEGACY_SEED_IMAGES[product.id])) return seed.image;
     const localPath = image.split(/[?#]/)[0];
     const isLegacyLocalAsset = /^(?:\/catalog\/|\/Images\/|Images\/|\.\/Images\/)/.test(localPath);
     const legacyFilename = localPath.split('/').pop() || '';
     return isLegacyLocalAsset ? LEGACY_CATALOG_IMAGES[legacyFilename] || image : image;
   };
-  const migratedImage = migrateImage(product.image) || product.image;
+  const isCollectionImage = /(?:slide2|slide3)(?:-[^/.]+)?\.jpg/.test(product.image || '');
+  const restoreProductImage = seed && product.id !== '1' && isCollectionImage;
+  const migratedImage = restoreProductImage ? seed.image : migrateImage(product.image) || product.image;
   const migratedSecondaryImage = migrateImage(product.secondaryImage);
   if (CATEGORIES.includes(product.category)) return { ...product, image: migratedImage, secondaryImage: migratedSecondaryImage };
   const name = `${product.name || ''} ${product.description || ''}`.toLowerCase();
@@ -247,6 +251,9 @@ export default function App() {
       const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            p.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
+    }).sort((a, b) => {
+      const priority = (product: Product) => product.id === '6' ? 0 : product.id === '1' ? 1 : 2;
+      return priority(a) - priority(b);
     });
   }, [products, selectedCategory, searchQuery]);
 
@@ -258,6 +265,7 @@ export default function App() {
   const activeProducts = useMemo(() => products.filter(product => product.isActive !== false), [products]);
 
   const addToCart = (product: Product, decantMl?: DecantSizeMl) => {
+    if (product.isGiftSet) decantMl = undefined;
     const variantKey = `${product.id}:${decantMl ? `${decantMl}ml` : 'full'}`;
     const cartProduct: CartItem = {
       ...product,
@@ -364,6 +372,7 @@ export default function App() {
       secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       fragranceFamily: String(formData.get('fragranceFamily') || '').trim() || undefined,
       size: String(formData.get('size') || '').trim() || undefined,
+      isGiftSet: formData.get('isGiftSet') === 'on',
     };
     setProducts(prev => [newProduct, ...prev]);
     setShowAddModal(false);
@@ -384,6 +393,7 @@ export default function App() {
       secondaryImage: String(formData.get('secondaryImage') || '').trim() || undefined,
       fragranceFamily: String(formData.get('fragranceFamily') || '').trim() || undefined,
       size: String(formData.get('size') || '').trim() || undefined,
+      isGiftSet: formData.get('isGiftSet') === 'on',
     };
     setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
     setEditingProduct(null);
@@ -408,9 +418,9 @@ export default function App() {
     setSearchQuery('');
     setIsMobileMenuOpen(false);
     if (isInformationRoute) {
-      window.location.href = `/?category=${encodeURIComponent(category)}#products`;
+      window.location.href = `/?category=${encodeURIComponent(category)}#${category === 'Niche' ? 'products' : 'collections'}`;
     } else {
-      document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' });
+      window.requestAnimationFrame(() => document.getElementById(category === 'Niche' ? 'products' : 'collections')?.scrollIntoView({ behavior: 'smooth' }));
     }
   };
 
@@ -440,7 +450,7 @@ export default function App() {
                 <img
                   src={logo}
                   alt="Fragranea Perfumery"
-                  className="h-12 w-12 rounded-full object-cover shadow-sm ring-1 ring-[#c9a56a]/60"
+                  className="h-14 w-14 rounded-full object-cover brightness-150 contrast-110 shadow-[0_0_18px_rgba(201,165,106,0.35)] ring-1 ring-[#e4c58d]"
                 />
                 <span className="hidden sm:block"><span className="block font-serif text-xl leading-tight tracking-wide">Fragranea</span><span className="block text-[9px] uppercase tracking-[.3em] text-[#c9a56a]">Perfumery</span></span>
               </a>
@@ -473,7 +483,11 @@ export default function App() {
                   placeholder={t.nav.search}
                   className="bg-transparent border-none focus:ring-0 text-sm ml-2 w-40 text-white placeholder:text-[#ead7b2]/50"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setSelectedCategory('All');
+                    if (e.target.value.trim()) window.scrollTo({ top: 0, behavior: 'instant' });
+                  }}
                 />
               </div>}
               {!isAdminRoute && <button
@@ -516,7 +530,7 @@ export default function App() {
         {isInformationRoute ? <Fragranea language={language} /> : !isAdminRoute ? (
           <>
             {/* Hero Section */}
-            <section className="store-hero bg-[#1a1110]">
+            {!searchQuery.trim() && <><section className="store-hero bg-[#1a1110]">
               <picture className="store-hero-art block h-[58vh] min-h-[400px] max-h-[680px] md:h-[34vw] md:min-h-[440px]">
                 <source media="(max-width: 767px)" srcSet={mobileHeroImage} />
                 <img src={heroImage} alt="Fragranea Perfumery — sélection de parfums" className="w-full h-full object-cover object-center" />
@@ -529,8 +543,7 @@ export default function App() {
               </div>
             </section>
 
-            <CollectionSpotlight language={language} selectedCategory={selectedCategory} browse={browseCollection} />
-            <ScentFinder products={activeProducts} language={language} discover={product => { setSelectedCategory(product.category); setSearchQuery(product.name); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
+            <CollectionSpotlight language={language} selectedCategory={selectedCategory} browse={category => { setSelectedCategory(category); setSearchQuery(''); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} /></>}
             {/* Products Grid */}
             <section id="products" className="store-catalog max-w-7xl mx-auto px-4 py-24">
               <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8">
@@ -582,6 +595,7 @@ export default function App() {
                         >
                           <Plus className="w-4 h-4" /> {t.store.addToBag}
                         </button>
+                        {product.isGiftSet && <span className="absolute top-4 left-4 bg-stone-900 text-white px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase">{words(language, 'Gift set', 'Coffret', 'طقم هدايا')}</span>}
                         <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold tracking-widest text-stone-900 uppercase">
                           {t.category[categoryKeys[product.category]]}
                         </div>
@@ -591,6 +605,7 @@ export default function App() {
                           <h4 className="text-lg font-serif font-bold mb-1 group-hover:text-gold-600 transition-colors">{product.name}</h4>
                           <p className="text-stone-500 text-sm line-clamp-1">{product.description}</p>
                           <p className="text-xs text-gold-700 mt-3">{[product.fragranceFamily || perfumeDetails(product)?.family, product.size].filter(Boolean).join(' · ')}</p>
+                          {product.isGiftSet && <p className="mt-3 text-xs text-stone-500">{words(language, 'Complete gift set · Gift box included', 'Coffret complet · Boîte cadeau incluse', 'طقم كامل · يشمل علبة هدايا')}</p>}
                         </div>
                         <span className="text-lg font-medium">{product.price} {t.currency}</span>
                       </div>
@@ -608,6 +623,7 @@ export default function App() {
                 </div>
               )}
             </section>
+            <ScentFinder products={activeProducts} language={language} discover={product => { setSelectedCategory(product.category); setSearchQuery(product.name); document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }); }} />
             {(storeContent.delivery[language] || storeContent.returns[language]) && <aside className="max-w-7xl mx-auto px-4 pb-12 grid sm:grid-cols-2 gap-6">{storeContent.delivery[language] && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Delivery', 'Livraison', 'التوصيل')}</h3><p className="text-sm text-stone-600">{storeContent.delivery[language]}</p></div>}{storeContent.returns[language] && <div className="border border-stone-200 rounded-xl p-6"><h3 className="font-serif text-xl mb-3">{words(language, 'Returns', 'Retours', 'الإرجاع')}</h3><p className="text-sm text-stone-600">{storeContent.returns[language]}</p></div>}</aside>}
             {STORE_DETAILS.reviews.length > 0 && <section className="lux-reveal max-w-7xl mx-auto px-4 py-16"><h2 className="font-serif text-4xl mb-10">{words(language, 'From our customers', 'Les mots de nos clients', 'آراء عملائنا')}</h2><div className="grid md:grid-cols-3 gap-8">{STORE_DETAILS.reviews.map(review => <figure key={review.id} className="bg-white border border-gold-200 rounded-2xl p-8"><blockquote className="font-serif text-xl leading-relaxed mb-6">“{review.quote[language]}”</blockquote><figcaption className="text-sm text-stone-500">{review.author}</figcaption></figure>)}</div></section>}
             <BrandStory language={language} />
@@ -940,10 +956,17 @@ export default function App() {
                       />
                     </div>
                   </div>
+                  <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 cursor-pointer">
+                    <input name="isGiftSet" type="checkbox" defaultChecked={editingProduct?.isGiftSet ?? false} className="mt-1 h-4 w-4 accent-stone-900" />
+                    <span>
+                      <span className="block text-sm font-medium text-stone-900">{words(language, 'Coffret / gift set', 'Coffret cadeau', 'طقم هدايا')}</span>
+                      <span className="block mt-1 text-xs text-stone-500">{words(language, 'Sell as a complete set, with a gift-set badge and no decant sizes. Choose Homme or Femme above and enter the contents below (e.g. 50 ml + 10 ml).', 'Vendu en coffret complet, avec un badge Coffret et sans formats décants. Choisissez Homme ou Femme ci-dessus et précisez le contenu ci-dessous (ex. 50 ml + 10 ml).', 'يُباع كطقم كامل مع شارة هدايا وبدون أحجام عينات. اختر رجالي أو نسائي أعلاه وأدخل المحتويات أدناه (مثلاً 50 مل + 10 مل).')}</span>
+                    </span>
+                  </label>
                   <div className="grid sm:grid-cols-2 gap-4">{([
                     ['secondaryImage', words(language, 'Second image URL', 'URL de la seconde image', 'رابط الصورة الثانية')],
                     ['fragranceFamily', words(language, 'Fragrance family', 'Famille olfactive', 'العائلة العطرية')],
-                    ['size', words(language, 'Size (e.g. 50 ml)', 'Contenance (ex. 50 ml)', 'الحجم (مثلاً 50 مل)')],
+                    ['size', words(language, 'Size / set contents (e.g. 50 ml + 10 ml)', 'Contenance / contenu du coffret (ex. 50 ml + 10 ml)', 'الحجم / محتويات الطقم (مثلاً 50 مل + 10 مل)')],
                   ] as const).map(([field, label]) => <label key={field} className="text-xs text-stone-500">{label}<input name={field} type={field === 'secondaryImage' ? 'url' : 'text'} defaultValue={editingProduct?.[field]} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>)}</div>
                   <button className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-gold-600 transition-colors shadow-lg mt-4">
                     {editingProduct ? t.admin.modal.save : t.admin.modal.create}
