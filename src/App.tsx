@@ -27,6 +27,7 @@ import logo from '../Images/logo.jpg';
 import heroImage from '../Images/slide1.jpg';
 import mobileHeroImage from '../Images/catalog/soft-florals.jpg';
 import Fragranea from './Fragranea';
+import ProductImageField from './ProductImageField';
 import { CollectionSpotlight, ScentFinder, BrandStory, perfumeDetails, words } from './StoreEnhancements';
 import { STORE_DETAILS } from './storeDetails';
 
@@ -157,6 +158,8 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [productSaveError, setProductSaveError] = useState('');
+  useEffect(() => { setProductSaveError(''); }, [showAddModal, editingProduct]);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isOrderComplete, setIsOrderComplete] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
@@ -358,6 +361,18 @@ export default function App() {
     setIsOrderComplete(true);
   };
 
+  const saveProductCatalog = (nextProducts: Product[]) => {
+    try {
+      localStorage.setItem('luxe_loom_products', JSON.stringify(nextProducts));
+      setProducts(nextProducts);
+      setProductSaveError('');
+      return true;
+    } catch {
+      setProductSaveError(words(language, 'Unable to save. Browser storage may be full; remove an image or use an image URL and try again.', 'Enregistrement impossible. Le stockage du navigateur est peut-être plein ; supprimez une image ou utilisez une URL, puis réessayez.', 'تعذر الحفظ. قد تكون مساحة المتصفح ممتلئة؛ احذف صورة أو استخدم رابطاً ثم أعد المحاولة.'));
+      return false;
+    }
+  };
+
   const handleAddProduct = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -374,7 +389,7 @@ export default function App() {
       size: String(formData.get('size') || '').trim() || undefined,
       isGiftSet: formData.get('isGiftSet') === 'on',
     };
-    setProducts(prev => [newProduct, ...prev]);
+    if (!saveProductCatalog([newProduct, ...products])) return;
     setShowAddModal(false);
   };
 
@@ -395,7 +410,7 @@ export default function App() {
       size: String(formData.get('size') || '').trim() || undefined,
       isGiftSet: formData.get('isGiftSet') === 'on',
     };
-    setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    if (!saveProductCatalog(products.map(p => p.id === updated.id ? updated : p))) return;
     setEditingProduct(null);
   };
 
@@ -946,14 +961,8 @@ export default function App() {
                         <option value="Niche">{t.category.niche}</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">{t.admin.modal.image}</label>
-                      <input
-                        name="image"
-                        defaultValue={editingProduct?.image}
-                        className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-all"
-                        placeholder="https://..."
-                      />
+                    <div key={`${editingProduct?.id || 'new'}-image`} className="col-span-2">
+                      <ProductImageField name="image" label={words(language, 'Perfume picture', 'Photo du parfum', 'صورة العطر')} initialValue={editingProduct?.image} language={language} />
                     </div>
                   </div>
                   <label className="flex items-start gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 cursor-pointer">
@@ -964,10 +973,11 @@ export default function App() {
                     </span>
                   </label>
                   <div className="grid sm:grid-cols-2 gap-4">{([
-                    ['secondaryImage', words(language, 'Second image URL', 'URL de la seconde image', 'رابط الصورة الثانية')],
                     ['fragranceFamily', words(language, 'Fragrance family', 'Famille olfactive', 'العائلة العطرية')],
                     ['size', words(language, 'Size / set contents (e.g. 50 ml + 10 ml)', 'Contenance / contenu du coffret (ex. 50 ml + 10 ml)', 'الحجم / محتويات الطقم (مثلاً 50 مل + 10 مل)')],
-                  ] as const).map(([field, label]) => <label key={field} className="text-xs text-stone-500">{label}<input name={field} type={field === 'secondaryImage' ? 'url' : 'text'} defaultValue={editingProduct?.[field]} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>)}</div>
+                  ] as const).map(([field, label]) => <label key={field} className="text-xs text-stone-500">{label}<input name={field} type="text" defaultValue={editingProduct?.[field]} className="block w-full mt-2 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl" /></label>)}</div>
+                  <div key={`${editingProduct?.id || 'new'}-secondaryImage`}><ProductImageField name="secondaryImage" label={words(language, 'Second picture (optional)', 'Seconde photo (facultatif)', 'الصورة الثانية (اختيارية)')} initialValue={editingProduct?.secondaryImage} language={language} /></div>
+                  {productSaveError && <p role="alert" className="text-sm text-red-600">{productSaveError}</p>}
                   <button className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-gold-600 transition-colors shadow-lg mt-4">
                     {editingProduct ? t.admin.modal.save : t.admin.modal.create}
                   </button>
